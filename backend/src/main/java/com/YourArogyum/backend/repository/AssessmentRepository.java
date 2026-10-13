@@ -1,0 +1,13 @@
+
+package com.YourArogyum.backend.repository;
+
+import com.YourArogyum.backend.entity.Assessment;
+import org.springframework.data.jpa.repository.JpaRepository;
+
+import java.util.Optional;
+
+public interface AssessmentRepository
+        extends JpaRepository<Assessment, Long> {
+
+    Optional<Assessment> findByUser_Id(Long userId);
+}
