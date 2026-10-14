@@ -17,11 +17,18 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 
+import org.springframework.beans.factory.annotation.Value;
+
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 
 @Configuration
 @EnableWebSecurity
 public class SecurityConfig {
+
+    @Value("${ALLOWED_ORIGINS:}")
+    private String allowedOriginsEnv;
 
     private final CustomUserDetailsService userDetailsService;
 
@@ -54,13 +61,27 @@ public class SecurityConfig {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
 
-        configuration.setAllowedOrigins(List.of(
+        List<String> origins = new ArrayList<>(List.of(
                 "http://localhost:5173",
                 "http://localhost:5174",
                 "http://localhost:5175",
                 "http://localhost:5177",
-                "http://127.0.0.1:5177"
+                "http://127.0.0.1:5177",
+                "https://your-arogyum-team.vercel.app"
         ));
+
+        String extraOrigins = (allowedOriginsEnv != null && !allowedOriginsEnv.isBlank())
+                ? allowedOriginsEnv
+                : System.getenv("ALLOWED_ORIGINS");
+
+        if (extraOrigins != null && !extraOrigins.isBlank()) {
+            Arrays.stream(extraOrigins.split(","))
+                    .map(String::trim)
+                    .filter(origin -> !origin.isEmpty() && !origins.contains(origin))
+                    .forEach(origins::add);
+        }
+
+        configuration.setAllowedOrigins(origins);
 
 
         configuration.setAllowedMethods(List.of(
