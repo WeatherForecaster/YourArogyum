@@ -1,0 +1,29 @@
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+
+# Git and editor files
+.git/
+.gitignore
+.idea/
+.vscode/
+.DS_Store
+
+# Environment and secrets
+.env
+*.log
+
+# Docker files
+.dockerignore
+Dockerfile
+
+# Explicitly ensure required model files are not excluded
+!model/
+!model/*.pkl
