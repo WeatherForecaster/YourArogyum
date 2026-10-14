@@ -58,23 +58,10 @@ export default function WorkoutPlanPage({
     }
   }, [assessmentData]);
 
-  const workoutPlan = useMemo(() => {
-    const plan = generatePersonalizedWorkout(assessment);
-    console.log("[WorkoutPlanPage] Received assessment:", assessment);
-    console.log("[WorkoutPlanPage] Generated plan summary:", {
-      totalDurationMin: plan.totalDurationMin,
-      difficulty: plan.difficulty,
-      focusTitle: plan.focusTitle,
-      hasHealthCondition: plan.hasHealthCondition,
-      adaptedFactors: plan.adaptedFactors,
-      sections: plan.sections.map((s) => ({
-        title: s.title,
-        subtitle: s.subtitle,
-        exerciseCount: s.exercises.length,
-      })),
-    });
-    return plan;
-  }, [assessment]);
+  const workoutPlan = useMemo(
+    () => generatePersonalizedWorkout(assessment),
+    [assessment]
+  );
 
   const workoutSections: WorkoutSection[] = workoutPlan.sections;
   const totalExercises = workoutPlan.totalExercises;
