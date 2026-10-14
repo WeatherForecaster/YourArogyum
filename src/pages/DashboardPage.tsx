@@ -17,6 +17,7 @@ import {
 import type { AssessmentData } from "../services/assessment";
 import type { HomeSection } from "../types/navigation";
 import { classifyGoalProgress } from "../utils/goalProgress";
+import { API_BASE_URL } from "../api/client";
 
 interface DashboardPageProps {
   assessmentData: AssessmentData | null;
@@ -89,7 +90,7 @@ interface GoalProgress {
 }
 
 
-const API_BASE = "http://localhost:8080";
+const API_BASE = API_BASE_URL;
 
 const EMPTY_DASHBOARD: DashboardData = {
   assessmentCompleted: false,

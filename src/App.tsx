@@ -14,6 +14,7 @@ import ProgressPage from "./pages/ProgressPage";
 import ProfilePage from "./pages/ProfilePage";
 import AppLayout from "./components/AppLayout";
 
+import { API_BASE_URL } from "./api/client";
 import {
   getMyAssessment,
   type AssessmentData,
@@ -27,7 +28,7 @@ type AppPage =
   | "assessment"
   | HomeSection;
 
-const AUTH_URL = "http://localhost:8080/api/auth";
+const AUTH_URL = `${API_BASE_URL}/api/auth`;
 
 function App() {
   const [activeModal, setActiveModal] = useState<ModalType>(null);

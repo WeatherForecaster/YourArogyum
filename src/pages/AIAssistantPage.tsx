@@ -1,5 +1,6 @@
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowUp, Bot, User } from "lucide-react";
+import { API_BASE_URL } from "../api/client";
 
 interface AIAssistantPageProps {
   onBack: () => void;
@@ -15,7 +16,7 @@ interface ChatResponse {
   reply: string;
 }
 
-const API_URL = "http://localhost:8080/api/chat";
+const API_URL = `${API_BASE_URL}/api/chat`;
 
 function AIAssistantPage({ onBack: _onBack }: AIAssistantPageProps) {
   const [input, setInput] = useState("");
