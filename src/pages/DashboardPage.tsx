@@ -15,7 +15,8 @@ import {
 } from "lucide-react";
 
 import type { AssessmentData } from "../services/assessment";
-import type { HomeSection } from "./HomePage";
+import type { HomeSection } from "../types/navigation";
+import { classifyGoalProgress } from "../utils/goalProgress";
 
 interface DashboardPageProps {
   assessmentData: AssessmentData | null;
@@ -75,13 +76,18 @@ interface WeightRecord {
   weightKg: number;
 }
 
+
 interface GoalProgress {
   available: boolean;
   goal?: string;
   startingWeightKg?: string | number | null;
   targetWeightKg?: string | number | null;
+  currentWeightKg?: number | string | null;
+  progressPercent?: number | null;
+  remainingKg?: number | null;
   message?: string;
 }
+
 
 const API_BASE = "http://localhost:8080";
 
@@ -397,27 +403,17 @@ function DashboardPage({
       ? weightHistory[weightHistory.length - 1]
       : null;
 
-  const currentTrackedWeight =
-    latestWeightRecord?.weightKg ?? todayLog.weightKg;
-
   const startingWeight = numericValue(goalData.startingWeightKg);
   const targetWeight = numericValue(goalData.targetWeightKg);
+  const currentWeightForGoal = numericValue(goalData.currentWeightKg);
 
-  const goalProgressPercent =
-    currentTrackedWeight != null &&
-    startingWeight != null &&
-    targetWeight != null &&
-    startingWeight !== targetWeight
-      ? Math.min(
-          100,
-          Math.max(
-            0,
-            ((currentTrackedWeight - startingWeight) /
-              (targetWeight - startingWeight)) *
-              100
-          )
-        )
-      : null;
+  // Classify goal state from raw weights — the backend's progressPercent is
+  // clamped to [0,100] and cannot distinguish "reached" from "exceeded".
+  const goalClassification = classifyGoalProgress(
+    startingWeight,
+    targetWeight,
+    currentWeightForGoal
+  );
 
   const chartWeights = weightHistory.slice(-10);
   const weightValues = chartWeights.map((item) => item.weightKg);
@@ -539,14 +535,18 @@ function DashboardPage({
               icon={Target}
               title="Goal progress"
               value={
-                goalProgressPercent == null
+                goalClassification.state === "unavailable"
                   ? "Not calculated"
-                  : `${Math.round(goalProgressPercent)}%`
+                  : goalClassification.state === "exceeded"
+                  ? "Target exceeded"
+                  : goalClassification.state === "reached"
+                  ? "Target reached!"
+                  : `${Math.round(goalClassification.clampedPercent)}%`
               }
               detail={
-                goalProgressPercent == null
+                goalClassification.state === "unavailable"
                   ? "Log your weight to calculate progress"
-                  : "Progress toward your saved weight target"
+                  : goalClassification.detailText
               }
               action={() => onNavigate("progress")}
             />
@@ -916,23 +916,52 @@ function DashboardPage({
                 />
               </div>
 
-              {goalProgressPercent != null ? (
+              {goalClassification.state !== "unavailable" ? (
                 <div className="mt-4">
                   <div className="flex justify-between gap-3 text-sm">
-                    <span className="text-[#596458]">Weight goal progress</span>
-                    <span className="font-medium text-[#344C3D]">
-                      {Math.round(goalProgressPercent)}%
+                    <span className="text-[#596458]">
+                      {goalClassification.state === "exceeded"
+                        ? "Target exceeded"
+                        : goalClassification.state === "reached"
+                        ? "Target reached"
+                        : goalClassification.state === "moving-away"
+                        ? "Moving away from target"
+                        : "Weight goal progress"}
+                    </span>
+                    <span
+                      className={`font-medium ${
+                        goalClassification.state === "exceeded"
+                          ? "text-amber-600"
+                          : goalClassification.state === "reached"
+                          ? "text-emerald-600"
+                          : goalClassification.state === "moving-away"
+                          ? "text-red-500"
+                          : "text-[#344C3D]"
+                      }`}
+                    >
+                      {goalClassification.state === "exceeded"
+                        ? "Exceeded"
+                        : goalClassification.state === "reached"
+                        ? "100%"
+                        : `${Math.round(goalClassification.clampedPercent)}%`}
                     </span>
                   </div>
                   <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#E8E7DE]">
                     <div
-                      className="h-full rounded-full bg-[#81947B]"
-                      style={{ width: `${goalProgressPercent}%` }}
+                      className={`h-full rounded-full ${
+                        goalClassification.state === "exceeded"
+                          ? "bg-amber-400"
+                          : goalClassification.state === "reached"
+                          ? "bg-emerald-500"
+                          : goalClassification.state === "moving-away"
+                          ? "bg-red-400"
+                          : "bg-[#81947B]"
+                      }`}
+                      style={{ width: `${goalClassification.clampedPercent}%` }}
                     />
                   </div>
                   <p className="mt-2 text-xs leading-5 text-[#77796F]">
-                    This measures progress toward your weight target, not
-                    overall health progress.
+                    {goalClassification.detailText}
                   </p>
                 </div>
               ) : (

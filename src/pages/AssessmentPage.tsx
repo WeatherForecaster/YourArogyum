@@ -569,17 +569,6 @@ export default function AssessmentPage({
               </Field>
 
               <Field
-                label="Family health history"
-                hint="Optional. Select any conditions that occur in your family. Choose None if none apply."
-              >
-                <ConditionSelector
-                  value={formData.familyHistory}
-                  onChange={(value) => updateField("familyHistory", value)}
-                  options={familyHistoryOptions}
-                />
-              </Field>
-
-              <Field
                 label="Other existing health concerns"
                 hint="Optional. Include conditions not listed above, or additional context you want us to consider."
               >
@@ -589,6 +578,17 @@ export default function AssessmentPage({
                   placeholder="Describe any other health concerns..."
                   rows={3}
                   className={`${inputClass} resize-y`}
+                />
+              </Field>
+
+              <Field
+                label="Family health history"
+                hint="Optional. Select any conditions that occur in your family. Choose None if none apply."
+              >
+                <ConditionSelector
+                  value={formData.familyHistory}
+                  onChange={(value) => updateField("familyHistory", value)}
+                  options={familyHistoryOptions}
                 />
               </Field>
 

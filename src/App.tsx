@@ -5,7 +5,7 @@ import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
 import AssessmentPage from "./pages/AssessmentPage";
-import HomePage, { type HomeSection } from "./pages/HomePage";
+import type { HomeSection } from "./types/navigation";
 import DashboardPage from "./pages/DashboardPage";
 import AIAssistantPage from "./pages/AIAssistantPage";
 import DietPlanPage from "./pages/DietPlanPage";
@@ -18,19 +18,14 @@ import {
   getMyAssessment,
   type AssessmentData,
 } from "./services/assessment";
+import { archiveAndClearLegacyStorage } from "./services/healthTracking";
 
 type ModalType = "login" | "register" | null;
 
 type AppPage =
   | "landing"
-  | "home"
   | "assessment"
-  | "dashboard"
-  | "ai-assistant"
-  | "diet-plan"
-  | "workout-plan"
-  | "progress"
-  | "profile";
+  | HomeSection;
 
 const AUTH_URL = "http://localhost:8080/api/auth";
 
@@ -57,6 +52,9 @@ function App() {
 
   useEffect(() => {
     let cancelled = false;
+
+    // Safely archive any legacy unscoped storage keys so they cannot leak across accounts
+    archiveAndClearLegacyStorage();
 
     async function restoreSession() {
       try {
@@ -87,10 +85,9 @@ function App() {
 
         if (!cancelled) {
           setAssessmentData(assessment.assessment);
-          setAssessmentCompleted(
-            Boolean(assessment.completed && assessment.assessment)
-          );
-          setCurrentPage("home");
+          const completed = Boolean(assessment.completed && assessment.assessment);
+          setAssessmentCompleted(completed);
+          setCurrentPage(completed ? "dashboard" : "assessment");
         }
       } catch (error) {
         if (!cancelled) {
@@ -119,7 +116,9 @@ function App() {
     setActiveModal(null);
 
     try {
-      await loadAssessment();
+      const assessment = await loadAssessment();
+      // assessmentCompleted state is set by loadAssessment; navigate based on whether data came back
+      setCurrentPage(assessment ? "dashboard" : "assessment");
     } catch (error) {
       setAssessmentData(null);
       setAssessmentCompleted(false);
@@ -128,9 +127,8 @@ function App() {
           ? error.message
           : "Unable to load your health profile."
       );
+      setCurrentPage("assessment");
     }
-
-    setCurrentPage("home");
   }, [loadAssessment]);
 
   const handleRegistrationSuccess = () => {
@@ -151,30 +149,7 @@ function App() {
     setIsEditingAssessment(false);
     setPageError("");
 
-    setCurrentPage(wasEditing ? "profile" : "home");
-  };
-
-  // Home page: Review Details opens the profile, not the assessment form.
-  const handleOpenProfile = async () => {
-    setPageError("");
-
-    try {
-      const savedAssessment = await loadAssessment();
-
-      if (!savedAssessment) {
-        setIsEditingAssessment(false);
-        setCurrentPage("assessment");
-        return;
-      }
-
-      setCurrentPage("profile");
-    } catch (error) {
-      setPageError(
-        error instanceof Error
-          ? error.message
-          : "Unable to load your saved health details."
-      );
-    }
+    setCurrentPage(wasEditing ? "profile" : "dashboard");
   };
 
   // Profile page: Edit opens the assessment with saved details.
@@ -201,7 +176,7 @@ function App() {
     }
   };
 
-  const handleNavigate = (page: HomeSection | "home") => {
+  const handleNavigate = (page: HomeSection) => {
     setPageError("");
     setCurrentPage(page);
   };
@@ -224,6 +199,8 @@ function App() {
       return;
     }
 
+    // Clean up active legacy browser storage to prevent cross-account contamination
+    archiveAndClearLegacyStorage();
     sessionStorage.removeItem("yourarogyum:diet-plan:v1");
     setAssessmentData(null);
     setAssessmentCompleted(false);
@@ -243,7 +220,6 @@ function App() {
   }
 
   const showAppLayout =
-    currentPage === "home" ||
     currentPage === "dashboard" ||
     currentPage === "ai-assistant" ||
     currentPage === "diet-plan" ||
@@ -268,18 +244,10 @@ function App() {
 
       {showAppLayout && (
         <AppLayout
-          currentPage={currentPage}
+          currentPage={currentPage as HomeSection}
           onNavigate={handleNavigate}
           onLogout={handleLogout}
         >
-          {currentPage === "home" && (
-            <HomePage
-              onNavigate={handleNavigate}
-              onReviewDetails={handleOpenProfile}
-              assessmentCompleted={assessmentCompleted}
-            />
-          )}
-
           {currentPage === "dashboard" && (
             <DashboardPage
               assessmentData={assessmentData}
@@ -290,31 +258,34 @@ function App() {
 
           {currentPage === "ai-assistant" && (
             <AIAssistantPage
-              onBack={() => setCurrentPage("home")}
+              onBack={() => setCurrentPage("dashboard")}
             />
           )}
 
           {currentPage === "diet-plan" && (
             <DietPlanPage
-              onBack={() => setCurrentPage("home")}
+              onBack={() => setCurrentPage("dashboard")}
             />
           )}
 
           {currentPage === "workout-plan" && (
             <WorkoutPlanPage
-              onBack={() => setCurrentPage("home")}
+              onBack={() => setCurrentPage("dashboard")}
             />
           )}
 
 
 {currentPage === "progress" && (
-  <ProgressPage assessmentData={assessmentData} />
+  <ProgressPage
+    assessmentData={assessmentData}
+    onAssessmentUpdate={(updated: AssessmentData) => setAssessmentData(updated)}
+  />
 )}
 
           {currentPage === "profile" && (
             <ProfilePage
               assessmentData={assessmentData}
-              onBack={() => setCurrentPage("home")}
+              onBack={() => setCurrentPage("dashboard")}
               onLogout={handleLogout}
               onReviewAssessment={handleEditAssessment}
             />
@@ -332,7 +303,7 @@ function App() {
               setIsEditingAssessment(false);
               setCurrentPage("profile");
             } else {
-              setCurrentPage(assessmentData ? "home" : "landing");
+              setCurrentPage(assessmentData ? "dashboard" : "landing");
             }
           }}
         />

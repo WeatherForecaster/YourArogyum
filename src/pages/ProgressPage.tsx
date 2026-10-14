@@ -1,5 +1,5 @@
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import {
   ResponsiveContainer,
@@ -22,7 +22,23 @@ import {
   Trash2,
   Pencil,
   X,
+  Loader2,
 } from "lucide-react";
+
+import {
+  getDailyLog,
+  saveDailyLog,
+  getWeightHistory,
+  getGoalProgress,
+  type DailyLogResponse,
+  type GoalProgressResponse,
+  archiveAndClearLegacyStorage,
+} from "../services/healthTracking";
+import {
+  saveMyAssessment,
+  type AssessmentData,
+} from "../services/assessment";
+import { classifyGoalProgress } from "../utils/goalProgress";
 
 type WeightEntry = {
   id: string;
@@ -39,12 +55,7 @@ type ActivityEntry = {
 
 type ProgressPageProps = {
   assessmentData: Record<string, string> | null;
-};
-
-const STORAGE_KEYS = {
-  weights: "yourarogyum_progress_weights",
-  activities: "yourarogyum_progress_activities",
-  target: "yourarogyum_progress_target",
+  onAssessmentUpdate?: (updated: AssessmentData) => void;
 };
 
 const today = () => {
@@ -53,15 +64,6 @@ const today = () => {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
-};
-
-const readStorage = <T,>(key: string, fallback: T): T => {
-  try {
-    const saved = localStorage.getItem(key);
-    return saved ? (JSON.parse(saved) as T) : fallback;
-  } catch {
-    return fallback;
-  }
 };
 
 const formatDate = (date: string) =>
@@ -82,63 +84,107 @@ const inputClass =
 
 export default function ProgressPage({
   assessmentData,
+  onAssessmentUpdate,
 }: ProgressPageProps) {
-  const [weights, setWeights] = useState<WeightEntry[]>(() =>
-    readStorage(STORAGE_KEYS.weights, [])
-  );
+  const [weights, setWeights] = useState<WeightEntry[]>([]);
+  const [sessionActivities, setSessionActivities] = useState<ActivityEntry[]>([]);
+  const [target, setTarget] = useState<string>("");
+  const [goalData, setGoalData] = useState<GoalProgressResponse | null>(null);
+  const [todayLog, setTodayLog] = useState<DailyLogResponse | null>(null);
 
-  const [activities, setActivities] = useState<ActivityEntry[]>(() =>
-    readStorage(STORAGE_KEYS.activities, [])
-  );
-
-  const [target, setTarget] = useState<string>(() =>
-    assessmentData?.targetWeight || readStorage(STORAGE_KEYS.target, "")
-  );
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState("");
 
   const [range, setRange] = useState("30");
   const [metric, setMetric] = useState<"weight" | "bmi">("weight");
+
   const [showWeightForm, setShowWeightForm] = useState(false);
   const [editingWeightId, setEditingWeightId] = useState<string | null>(null);
   const [weightDate, setWeightDate] = useState(today());
   const [weightValue, setWeightValue] = useState("");
+  const [savingWeight, setSavingWeight] = useState(false);
+
   const [showActivityForm, setShowActivityForm] = useState(false);
   const [activityDate, setActivityDate] = useState(today());
   const [activityType, setActivityType] = useState("Walking");
   const [activityMinutes, setActivityMinutes] = useState("30");
-  const [notice, setNotice] = useState("");
+  const [savingActivity, setSavingActivity] = useState(false);
 
-  // Keep the target synchronized with the saved health assessment.
+  const [savingTarget, setSavingTarget] = useState(false);
+
+  const [notice, setNotice] = useState("");
+  const [noticeType, setNoticeType] = useState<"success" | "error" | "info">("info");
+
+  // Load authenticated backend health-tracking data
+  const loadData = useCallback(async () => {
+    setLoading(true);
+    setFetchError("");
+
+    try {
+      // Archive any legacy unscoped localStorage data once to prevent leakage
+      archiveAndClearLegacyStorage();
+
+      const [history, goal, todayLogRes] = await Promise.all([
+        getWeightHistory("1900-01-01", today()).catch((err) => {
+          console.warn("[YourArogyum] Failed to fetch weight history:", err);
+          return [];
+        }),
+        getGoalProgress().catch((err) => {
+          console.warn("[YourArogyum] Failed to fetch goal progress:", err);
+          return null;
+        }),
+        getDailyLog(today()).catch((err) => {
+          console.warn("[YourArogyum] Failed to fetch today's log:", err);
+          return null;
+        }),
+      ]);
+
+      const mappedWeights: WeightEntry[] = Array.isArray(history)
+        ? history
+            .filter((h) => h && h.date && Number.isFinite(Number(h.weightKg)))
+            .map((h) => ({
+              id: h.date,
+              date: h.date,
+              weight: Number(h.weightKg),
+            }))
+            .sort((a, b) => a.date.localeCompare(b.date))
+        : [];
+
+      setWeights(mappedWeights);
+      setGoalData(goal);
+      setTodayLog(todayLogRes);
+
+      if (goal?.targetWeightKg != null) {
+        setTarget(String(goal.targetWeightKg));
+      } else if (assessmentData?.targetWeight) {
+        setTarget(assessmentData.targetWeight);
+      }
+    } catch (err) {
+      setFetchError(
+        err instanceof Error ? err.message : "Unable to load health progress records."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [assessmentData]);
+
+  useEffect(() => {
+    void loadData();
+  }, [loadData]);
+
+  // Keep target updated if parent assessmentData updates
   useEffect(() => {
     if (assessmentData?.targetWeight) {
       setTarget(assessmentData.targetWeight);
-    } else {
-      setTarget(readStorage(STORAGE_KEYS.target, ""));
     }
   }, [assessmentData?.targetWeight]);
 
   const assessmentWeight = Number(assessmentData?.weight);
-
   const hasAssessmentWeight =
     Boolean(assessmentData?.weight?.trim()) &&
     Number.isFinite(assessmentWeight) &&
     assessmentWeight > 0;
 
-  const persistWeights = (next: WeightEntry[]) => {
-    const sorted = [...next].sort((a, b) => a.date.localeCompare(b.date));
-    setWeights(sorted);
-    localStorage.setItem(STORAGE_KEYS.weights, JSON.stringify(sorted));
-  };
-
-  const persistActivities = (next: ActivityEntry[]) => {
-    const sorted = [...next].sort((a, b) => b.date.localeCompare(a.date));
-    setActivities(sorted);
-    localStorage.setItem(STORAGE_KEYS.activities, JSON.stringify(sorted));
-  };
-
-  const saveTarget = (value: string) => {
-    setTarget(value);
-    localStorage.setItem(STORAGE_KEYS.target, JSON.stringify(value));
-  };
 
   const sortedWeights = useMemo(
     () => [...weights].sort((a, b) => a.date.localeCompare(b.date)),
@@ -149,19 +195,22 @@ export default function ProgressPage({
   const latest = sortedWeights[sortedWeights.length - 1];
   const previous = sortedWeights[sortedWeights.length - 2];
 
-  // Use real dated entries when available. Otherwise use the saved assessment.
+  // Derive weights from backend records or assessment fallback
   const currentWeight =
-    latest?.weight ?? (hasAssessmentWeight ? assessmentWeight : null);
+    goalData?.currentWeightKg != null && Number.isFinite(Number(goalData.currentWeightKg))
+      ? Number(goalData.currentWeightKg)
+      : latest?.weight ?? (hasAssessmentWeight ? assessmentWeight : null);
 
   const startingWeight =
-    first?.weight ?? (hasAssessmentWeight ? assessmentWeight : null);
+    goalData?.startingWeightKg != null && Number.isFinite(Number(goalData.startingWeightKg))
+      ? Number(goalData.startingWeightKg)
+      : first?.weight ?? (hasAssessmentWeight ? assessmentWeight : null);
 
   const numericTarget = Number(target);
-
   const validTarget =
     target.trim() !== "" &&
     Number.isFinite(numericTarget) &&
-    numericTarget > 0 &&
+    numericTarget >= 2 &&
     numericTarget <= 500;
 
   const weightChange =
@@ -169,26 +218,21 @@ export default function ProgressPage({
       ? Number((latest.weight - previous.weight).toFixed(1))
       : null;
 
-  // Works for both weight-loss and weight-gain goals.
-  const goalProgress = (() => {
-    if (
-      startingWeight === null ||
-      currentWeight === null ||
-      !validTarget
-    ) {
-      return null;
-    }
+  // Classify the goal-progress state from raw weights, bypassing the backend's
+  // clamped progressPercent which cannot distinguish "reached" from "exceeded".
+  const goalClassification = useMemo(() => {
+    const sw =
+      goalData?.startingWeightKg != null && Number.isFinite(Number(goalData.startingWeightKg))
+        ? Number(goalData.startingWeightKg)
+        : startingWeight;
+    const tw = validTarget ? numericTarget : null;
+    const cw =
+      goalData?.currentWeightKg != null && Number.isFinite(Number(goalData.currentWeightKg))
+        ? Number(goalData.currentWeightKg)
+        : currentWeight;
 
-    if (startingWeight === numericTarget) {
-      return currentWeight === numericTarget ? 100 : null;
-    }
-
-    const totalChange = numericTarget - startingWeight;
-    const actualChange = currentWeight - startingWeight;
-    const progress = (actualChange / totalChange) * 100;
-
-    return Math.round(Math.min(100, Math.max(0, progress)));
-  })();
+    return classifyGoalProgress(sw, tw, cw);
+  }, [goalData, startingWeight, currentWeight, validTarget, numericTarget]);
 
   const cutoff = useMemo(() => {
     if (range === "all") return null;
@@ -227,8 +271,9 @@ export default function ProgressPage({
     setShowWeightForm(true);
   };
 
-  const submitWeight = (event: FormEvent<HTMLFormElement>) => {
+  const submitWeight = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setNotice("");
 
     const value = Number(weightValue);
 
@@ -236,52 +281,82 @@ export default function ProgressPage({
       !weightDate ||
       weightDate > today() ||
       !Number.isFinite(value) ||
-      value <= 0 ||
+      value < 2 ||
       value > 500
     ) {
-      setNotice("Enter a valid date and weight.");
+      setNotice("Enter a valid record date (up to today) and weight between 2 and 500 kg.");
+      setNoticeType("error");
       return;
     }
 
-    const duplicate = weights.some(
-      (entry) =>
-        entry.date === weightDate && entry.id !== editingWeightId
-    );
-
-    if (duplicate) {
+    setSavingWeight(true);
+    try {
+      await saveDailyLog(weightDate, { weightKg: value });
+      setNotice("Weight record saved successfully to your account.");
+      setNoticeType("success");
+      closeWeightForm();
+      await loadData();
+    } catch (err) {
       setNotice(
-        "A weight entry already exists for this date. Edit that entry instead."
+        err instanceof Error ? err.message : "Failed to save weight record."
       );
+      setNoticeType("error");
+    } finally {
+      setSavingWeight(false);
+    }
+  };
+
+  const deleteWeight = () => {
+    setNotice(
+      "Removing past weight logs is not supported by the health tracking service. You can use 'Edit' to correct the weight for that date."
+    );
+    setNoticeType("info");
+  };
+
+  const handleSaveTarget = async () => {
+    setNotice("");
+    const numeric = Number(target);
+
+    if (!target.trim() || !Number.isFinite(numeric) || numeric < 2 || numeric > 500) {
+      setNotice("Enter a valid target weight between 2 and 500 kg.");
+      setNoticeType("error");
       return;
     }
 
-    const entry: WeightEntry = {
-      id: editingWeightId ?? crypto.randomUUID(),
-      date: weightDate,
-      weight: value,
-    };
+    if (!assessmentData) {
+      setNotice("Please complete your health assessment first before setting a target weight.");
+      setNoticeType("error");
+      return;
+    }
 
-    persistWeights(
-      editingWeightId
-        ? weights.map((item) =>
-            item.id === editingWeightId ? entry : item
-          )
-        : [...weights, entry]
-    );
+    setSavingTarget(true);
+    try {
+      const response = await saveMyAssessment({
+        ...assessmentData,
+        targetWeight: String(numeric),
+      });
 
-    setNotice("Weight record saved on this device.");
-    closeWeightForm();
+      setNotice("Target weight updated successfully.");
+      setNoticeType("success");
+
+      if (onAssessmentUpdate && response.assessment) {
+        onAssessmentUpdate(response.assessment);
+      }
+
+      await loadData();
+    } catch (err) {
+      setNotice(
+        err instanceof Error ? err.message : "Failed to update target weight."
+      );
+      setNoticeType("error");
+    } finally {
+      setSavingTarget(false);
+    }
   };
 
-  const deleteWeight = (id: string) => {
-    if (!window.confirm("Delete this weight record?")) return;
-
-    persistWeights(weights.filter((entry) => entry.id !== id));
-    setNotice("Weight record deleted.");
-  };
-
-  const submitActivity = (event: FormEvent<HTMLFormElement>) => {
+  const submitActivity = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    setNotice("");
 
     const minutes = Number(activityMinutes);
 
@@ -292,31 +367,61 @@ export default function ProgressPage({
       minutes <= 0 ||
       minutes > 1440
     ) {
-      setNotice("Enter a valid date and duration.");
+      setNotice("Enter a valid date and duration between 1 and 1440 minutes.");
+      setNoticeType("error");
       return;
     }
 
-    persistActivities([
-      {
-        id: crypto.randomUUID(),
+    setSavingActivity(true);
+    try {
+      await saveDailyLog(activityDate, { activityMinutes: minutes });
+
+      const newEntry: ActivityEntry = {
+        id: `${activityDate}-${Date.now()}`,
         date: activityDate,
         type: activityType,
         minutes,
-      },
-      ...activities,
-    ]);
+      };
 
-    setNotice("Activity saved on this device.");
-    setShowActivityForm(false);
-    setActivityMinutes("30");
+      setSessionActivities((prev) => [
+        newEntry,
+        ...prev.filter((a) => a.date !== activityDate),
+      ]);
+
+      setNotice("Activity saved successfully to your account.");
+      setNoticeType("success");
+      setShowActivityForm(false);
+      setActivityMinutes("30");
+      await loadData();
+    } catch (err) {
+      setNotice(
+        err instanceof Error ? err.message : "Failed to save activity."
+      );
+      setNoticeType("error");
+    } finally {
+      setSavingActivity(false);
+    }
   };
 
-  const totalMinutes = activities.reduce(
-    (sum, item) => sum + item.minutes,
-    0
-  );
+  // Combine persisted today's activity with any logged this session
+  const totalMinutes = useMemo(() => {
+    let sum = sessionActivities.reduce((acc, item) => acc + item.minutes, 0);
+    if (
+      todayLog?.activityMinutes != null &&
+      !sessionActivities.some((a) => a.date === todayLog.logDate)
+    ) {
+      sum += todayLog.activityMinutes;
+    }
+    return sum;
+  }, [sessionActivities, todayLog]);
 
-  const activeDays = new Set(activities.map((item) => item.date)).size;
+  const activeDaysCount = useMemo(() => {
+    const dates = new Set(sessionActivities.map((a) => a.date));
+    if (todayLog?.activityMinutes != null && todayLog.activityMinutes > 0) {
+      dates.add(todayLog.logDate);
+    }
+    return dates.size;
+  }, [sessionActivities, todayLog]);
 
   return (
     <main className="min-h-screen bg-[#f7f8f3] px-4 py-6 text-[#304438] sm:px-6 lg:px-10">
@@ -346,16 +451,39 @@ export default function ProgressPage({
 
         {notice && (
           <div
-            role="status"
-            className="flex items-center justify-between gap-3 rounded-xl border border-[#dce5d7] bg-white px-4 py-3 text-sm text-[#536d57]"
+            role={noticeType === "error" ? "alert" : "status"}
+            className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
+              noticeType === "error"
+                ? "border-red-200 bg-red-50 text-red-700"
+                : noticeType === "success"
+                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                : "border-blue-200 bg-blue-50 text-blue-800"
+            }`}
           >
-            {notice}
+            <span>{notice}</span>
             <button
               onClick={() => setNotice("")}
               aria-label="Dismiss message"
+              className="text-current opacity-70 hover:opacity-100"
             >
               <X size={16} />
             </button>
+          </div>
+        )}
+
+        {fetchError && (
+          <div
+            role="alert"
+            className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+          >
+            {fetchError}
+          </div>
+        )}
+
+        {loading && (
+          <div className="flex items-center justify-center gap-2 rounded-2xl border border-[#e6e9df] bg-white p-4 text-sm text-[#708071]">
+            <Loader2 className="animate-spin text-[#66816b]" size={16} />
+            <span>Loading your authenticated health records...</span>
           </div>
         )}
 
@@ -407,25 +535,27 @@ export default function ProgressPage({
             icon={<Target size={19} />}
             label="Goal progress"
             value={
-              goalProgress === null
+              goalClassification.state === "unavailable"
                 ? "Not available"
-                : `${goalProgress}%`
+                : goalClassification.state === "exceeded"
+                ? "Target exceeded"
+                : goalClassification.state === "reached"
+                ? "Target reached!"
+                : `${Math.round(goalClassification.clampedPercent)}%`
             }
             detail={
               !validTarget
                 ? "No target weight set"
-                : goalProgress === null
-                  ? "Add a valid starting and current weight"
-                  : `${Math.abs(
-                      numericTarget - (currentWeight ?? numericTarget)
-                    ).toFixed(1)} kg from target`
+                : goalClassification.state === "unavailable"
+                ? "Add a valid starting and current weight"
+                : goalClassification.detailText
             }
           />
 
           <SummaryCard
             icon={<CalendarDays size={19} />}
             label="Activity days"
-            value={String(activeDays)}
+            value={String(activeDaysCount)}
             detail={`${totalMinutes} total minutes logged`}
           />
         </section>
@@ -553,7 +683,7 @@ export default function ProgressPage({
 
             <div className="mt-5 flex flex-wrap items-center justify-between gap-3 border-t border-[#edf0e9] pt-4 text-xs text-[#899589]">
               <span>{visibleWeights.length} records in this period</span>
-              <span>Based on manually recorded measurements</span>
+              <span>Based on your authenticated health records</span>
             </div>
           </div>
 
@@ -581,14 +711,26 @@ export default function ProgressPage({
               <input
                 id="targetWeight"
                 type="number"
-                min="1"
+                min="2"
                 max="500"
                 step="0.1"
                 placeholder="Enter target"
                 value={target}
-                onChange={(e) => saveTarget(e.target.value)}
+                onChange={(e) => setTarget(e.target.value)}
                 className={inputClass}
               />
+              <button
+                type="button"
+                onClick={handleSaveTarget}
+                disabled={savingTarget}
+                className="inline-flex items-center gap-1.5 rounded-xl bg-[#526e58] px-4 py-2 text-sm font-medium text-white shadow-sm transition hover:bg-[#405945] disabled:opacity-50"
+              >
+                {savingTarget ? (
+                  <Loader2 className="animate-spin" size={15} />
+                ) : (
+                  "Save"
+                )}
+              </button>
               <span className="flex items-center rounded-xl bg-[#f1f4ed] px-3 text-sm text-[#708271]">
                 kg
               </span>
@@ -617,35 +759,61 @@ export default function ProgressPage({
               />
             </div>
 
-            {goalProgress !== null ? (
+            {goalClassification.state !== "unavailable" ? (
               <>
                 <div className="mb-2 flex items-center justify-between text-sm">
                   <span className="text-[#738174]">
-                    Progress toward target
+                    {goalClassification.state === "exceeded"
+                      ? "Target exceeded"
+                      : goalClassification.state === "reached"
+                      ? "Target reached"
+                      : goalClassification.state === "moving-away"
+                      ? "Moving away from target"
+                      : "Progress toward target"}
                   </span>
-                  <strong>{goalProgress}%</strong>
+                  <strong
+                    className={
+                      goalClassification.state === "exceeded"
+                        ? "text-amber-600"
+                        : goalClassification.state === "reached"
+                        ? "text-emerald-600"
+                        : goalClassification.state === "moving-away"
+                        ? "text-red-500"
+                        : undefined
+                    }
+                  >
+                    {goalClassification.state === "exceeded"
+                      ? "Exceeded"
+                      : goalClassification.state === "reached"
+                      ? "100%"
+                      : `${Math.round(goalClassification.clampedPercent)}%`}
+                  </strong>
                 </div>
 
                 <div
                   className="h-2.5 overflow-hidden rounded-full bg-[#edf1e9]"
                   role="progressbar"
-                  aria-valuenow={goalProgress}
+                  aria-valuenow={goalClassification.clampedPercent}
                   aria-valuemin={0}
                   aria-valuemax={100}
                   aria-label="Goal progress"
                 >
                   <div
-                    className="h-full rounded-full bg-[#779576] transition-all"
-                    style={{ width: `${goalProgress}%` }}
+                    className={`h-full rounded-full transition-all ${
+                      goalClassification.state === "exceeded"
+                        ? "bg-amber-400"
+                        : goalClassification.state === "reached"
+                        ? "bg-emerald-500"
+                        : goalClassification.state === "moving-away"
+                        ? "bg-red-400"
+                        : "bg-[#779576]"
+                    }`}
+                    style={{ width: `${goalClassification.clampedPercent}%` }}
                   />
                 </div>
 
                 <p className="mt-3 text-xs leading-5 text-[#879286]">
-                  Progress is calculated from your earliest dated weight
-                  record, or your saved assessment weight when no dated
-                  records exist. Future progress depends on recording updated
-                  measurements. This is a tracking metric, not a medical
-                  assessment.
+                  {goalClassification.detailText}
                 </p>
               </>
             ) : (
@@ -753,8 +921,12 @@ export default function ProgressPage({
                   </button>
                   <button
                     type="submit"
-                    className="rounded-full bg-[#526e58] px-4 py-2 text-sm font-medium text-white"
+                    disabled={savingActivity}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-[#526e58] px-4 py-2 text-sm font-medium text-white hover:bg-[#405945] disabled:opacity-50"
                   >
+                    {savingActivity ? (
+                      <Loader2 className="animate-spin" size={14} />
+                    ) : null}
                     Save activity
                   </button>
                 </div>
@@ -779,15 +951,30 @@ export default function ProgressPage({
             </div>
 
             <div className="mt-4 space-y-2">
-              {activities.length === 0 ? (
+              {sessionActivities.length === 0 && (todayLog?.activityMinutes == null || todayLog.activityMinutes === 0) ? (
                 <p className="rounded-xl border border-dashed border-[#dce5d8] p-5 text-center text-sm leading-6 text-[#879286]">
-                  No activities logged yet. Add an activity to start building
-                  your history.
+                  No activities logged yet for this session. Add an activity to record your movement.
                 </p>
               ) : (
-                [...activities]
-                  .sort((a, b) => b.date.localeCompare(a.date))
-                  .map((activity) => (
+                <>
+                  {todayLog?.activityMinutes != null && todayLog.activityMinutes > 0 && (
+                    <div className="flex items-center gap-3 rounded-xl border border-[#edf0e9] bg-[#fcfdfa] px-3 py-3">
+                      <div className="rounded-lg bg-[#edf3e9] p-2 text-[#66816b]">
+                        <Activity size={17} />
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-medium">Today's Total Activity</p>
+                        <p className="mt-0.5 text-xs text-[#879286]">
+                          {formatDate(todayLog.logDate)} (Synced with Account)
+                        </p>
+                      </div>
+                      <span className="text-sm font-medium">
+                        {todayLog.activityMinutes} min
+                      </span>
+                    </div>
+                  )}
+
+                  {sessionActivities.map((activity) => (
                     <div
                       key={activity.id}
                       className="flex items-center gap-3 rounded-xl border border-[#edf0e9] px-3 py-3"
@@ -806,26 +993,9 @@ export default function ProgressPage({
                       <span className="text-sm font-medium">
                         {activity.minutes} min
                       </span>
-
-                      <button
-                        onClick={() => {
-                          if (
-                            window.confirm("Delete this activity record?")
-                          ) {
-                            persistActivities(
-                              activities.filter(
-                                (item) => item.id !== activity.id
-                              )
-                            );
-                          }
-                        }}
-                        aria-label={`Delete ${activity.type} record`}
-                        className="rounded-lg p-2 text-[#a0aaa0] hover:bg-[#f8eeee] hover:text-[#9b5b5b]"
-                      >
-                        <Trash2 size={15} />
-                      </button>
                     </div>
-                  ))
+                  ))}
+                </>
               )}
             </div>
           </div>
@@ -834,7 +1004,7 @@ export default function ProgressPage({
             <div>
               <h2 className="text-lg font-semibold">Weight history</h2>
               <p className="mt-1 text-sm text-[#819084]">
-                Review, correct, or remove a record
+                Review or correct a record from your account
               </p>
             </div>
 
@@ -847,7 +1017,7 @@ export default function ProgressPage({
                   />
                   <p className="text-sm font-medium">No weight history yet</p>
                   <p className="mt-1 text-xs text-[#879286]">
-                    Your dated records will appear here.
+                    Your authenticated records will appear here once saved.
                   </p>
                 </div>
               ) : (
@@ -882,7 +1052,7 @@ export default function ProgressPage({
                               <Pencil size={15} />
                             </button>
                             <button
-                              onClick={() => deleteWeight(entry.id)}
+                              onClick={deleteWeight}
                               aria-label="Delete weight record"
                               className="rounded-lg p-2 text-[#a0aaa0] hover:bg-[#f8eeee] hover:text-[#9b5b5b]"
                             >
@@ -942,7 +1112,7 @@ export default function ProgressPage({
                   {editingWeightId ? "Edit weight record" : "Log your weight"}
                 </h2>
                 <p className="mt-1 text-sm text-[#839084]">
-                  Add a dated measurement to your health history.
+                  Add a dated measurement to your account's health history.
                 </p>
               </div>
 
@@ -984,7 +1154,7 @@ export default function ProgressPage({
                 <input
                   id="weightValue"
                   type="number"
-                  min="1"
+                  min="2"
                   max="500"
                   step="0.1"
                   placeholder="e.g. 62.5"
@@ -1005,8 +1175,12 @@ export default function ProgressPage({
                 </button>
                 <button
                   type="submit"
-                  className="rounded-full bg-[#526e58] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#405945]"
+                  disabled={savingWeight}
+                  className="inline-flex items-center gap-1.5 rounded-full bg-[#526e58] px-5 py-2.5 text-sm font-medium text-white hover:bg-[#405945] disabled:opacity-50"
                 >
+                  {savingWeight ? (
+                    <Loader2 className="animate-spin" size={15} />
+                  ) : null}
                   {editingWeightId ? "Save changes" : "Save record"}
                 </button>
               </div>

@@ -2,7 +2,6 @@ import {
   Activity,
   Brain,
   Dumbbell,
-  House,
   Leaf,
   LogOut,
   Menu,
@@ -13,9 +12,9 @@ import {
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { ReactNode } from "react";
-import type { HomeSection } from "../pages/HomePage";
+import type { HomeSection } from "../types/navigation";
 
-type AppLayoutPage = HomeSection | "home";
+type AppLayoutPage = HomeSection;
 
 interface AppLayoutProps {
   currentPage: AppLayoutPage;
@@ -37,7 +36,6 @@ interface SavedPageScroll {
 }
 
 const navigation = [
-  { id: "home", label: "Home", icon: House },
   { id: "dashboard", label: "Dashboard", icon: Activity },
   { id: "ai-assistant", label: "AI Assistant", icon: Brain },
   { id: "diet-plan", label: "Diet Plan", icon: Salad },
@@ -197,7 +195,7 @@ export default function AppLayout({
   return (
     <div className="min-h-screen bg-[#F6F2E9] text-[#344C3D] lg:min-h-0 lg:h-screen">
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#344C3D]/10 bg-[#F6F2E9] px-5 py-3 lg:hidden">
-        <button type="button" onClick={() => navigate("home")} className="flex items-center gap-2" aria-label="Go to home">
+        <button type="button" onClick={() => navigate("dashboard")} className="flex items-center gap-2" aria-label="Go to dashboard">
           <Leaf size={22} className="text-[#344C3D]" />
           <span className="font-serif text-xl font-semibold">Your<span className="text-[#A87945]">Arogyum</span></span>
         </button>
@@ -210,7 +208,7 @@ export default function AppLayout({
 
       <aside className={`fixed inset-y-0 left-0 z-50 w-[250px] border-r border-[#344C3D]/10 bg-[#F6F2E9] transition-transform duration-200 lg:translate-x-0 ${mobileOpen ? "translate-x-0" : "-translate-x-full"}`}>
         <div className="flex h-full flex-col">
-          <button type="button" onClick={() => navigate("home")} aria-label="Go to home" className="flex h-[82px] shrink-0 items-center gap-3 border-b border-[#344C3D]/10 px-6 text-left">
+          <button type="button" onClick={() => navigate("dashboard")} aria-label="Go to dashboard" className="flex h-[82px] shrink-0 items-center gap-3 border-b border-[#344C3D]/10 px-6 text-left">
             <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-[#344C3D] text-[#F6F2E9]"><Leaf size={21} strokeWidth={1.7} /></span>
             <span className="font-serif text-lg font-semibold tracking-tight text-[#344C3D]">Your<span className="text-[#A87945]">Arogyum</span></span>
           </button>
