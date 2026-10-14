@@ -149,6 +149,9 @@ function App() {
     setIsEditingAssessment(false);
     setPageError("");
 
+    // Refresh assessment state from backend so all pages receive the fresh stored record
+    void loadAssessment();
+
     setCurrentPage(wasEditing ? "profile" : "dashboard");
   };
 
@@ -270,6 +273,7 @@ function App() {
 
           {currentPage === "workout-plan" && (
             <WorkoutPlanPage
+              assessmentData={assessmentData}
               onBack={() => setCurrentPage("dashboard")}
             />
           )}

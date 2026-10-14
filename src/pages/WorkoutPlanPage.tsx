@@ -1,101 +1,22 @@
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Clock,
   CheckCircle2,
-  Dumbbell,
   Heart,
-  Sun,
-  Wind,
   Activity,
   Info,
   RotateCcw,
 } from "lucide-react";
+import { getMyAssessment, type AssessmentData } from "../services/assessment";
+import {
+  generatePersonalizedWorkout,
+  type WorkoutSection,
+} from "../utils/workoutPlanner";
 
 interface WorkoutPlanPageProps {
   onBack: () => void;
+  assessmentData?: AssessmentData | null;
 }
-
-type Exercise = {
-  name: string;
-  duration: string;
-  detail: string;
-};
-
-type WorkoutSection = {
-  title: string;
-  subtitle: string;
-  icon: typeof Sun;
-  exercises: Exercise[];
-};
-
-const workoutSections: WorkoutSection[] = [
-  {
-    title: "Warm-up",
-    subtitle: "5 minutes",
-    icon: Sun,
-    exercises: [
-      {
-        name: "Marching in place",
-        duration: "2 min",
-        detail: "March gently at a comfortable pace.",
-      },
-      {
-        name: "Shoulder rolls",
-        duration: "1 min",
-        detail: "Roll your shoulders slowly in both directions.",
-      },
-      {
-        name: "Gentle side steps",
-        duration: "2 min",
-        detail: "Step side to side while maintaining your balance.",
-      },
-    ],
-  },
-  {
-    title: "Main Workout",
-    subtitle: "20 minutes",
-    icon: Dumbbell,
-    exercises: [
-      {
-        name: "Brisk walking",
-        duration: "8 min",
-        detail: "Walk at a pace where you can still hold a conversation.",
-      },
-      {
-        name: "Chair sit-to-stands",
-        duration: "4 min",
-        detail: "Use a stable chair and your hands for support if needed.",
-      },
-      {
-        name: "Wall push-ups",
-        duration: "4 min",
-        detail: "Keep your body aligned and move slowly.",
-      },
-      {
-        name: "Standing calf raises",
-        duration: "4 min",
-        detail: "Hold a stable support and raise your heels gently.",
-      },
-    ],
-  },
-  {
-    title: "Cool-down",
-    subtitle: "5 minutes",
-    icon: Wind,
-    exercises: [
-      {
-        name: "Slow walking",
-        duration: "2 min",
-        detail: "Gradually slow your pace and relax your breathing.",
-      },
-      {
-        name: "Gentle stretching",
-        duration: "3 min",
-        detail: "Stretch your calves, shoulders and back without bouncing.",
-      },
-    ],
-  },
-];
 
 const filters = ["Warm-up", "Main Workout", "Cool-down"] as const;
 
@@ -103,15 +24,60 @@ type WorkoutFilter = (typeof filters)[number];
 
 export default function WorkoutPlanPage({
   onBack: _onBack,
+  assessmentData,
 }: WorkoutPlanPageProps) {
+  const [assessment, setAssessment] = useState<AssessmentData | null>(
+    assessmentData ?? null
+  );
   const [completed, setCompleted] = useState<string[]>([]);
   const [activeFilter, setActiveFilter] = useState<WorkoutFilter | null>(null);
 
-  const totalExercises = workoutSections.reduce(
-    (total, section) => total + section.exercises.length,
-    0
-  );
+  // Always fetch fresh assessment data from the backend on mount
+  useEffect(() => {
+    let cancelled = false;
 
+    getMyAssessment()
+      .then((result) => {
+        if (!cancelled && result.completed && result.assessment) {
+          setAssessment(result.assessment);
+        }
+      })
+      .catch((err) => {
+        console.warn("[WorkoutPlanPage] Could not load fresh assessment:", err);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Also sync if the parent App.tsx updates assessmentData
+  useEffect(() => {
+    if (assessmentData !== undefined && assessmentData !== null) {
+      setAssessment(assessmentData);
+    }
+  }, [assessmentData]);
+
+  const workoutPlan = useMemo(() => {
+    const plan = generatePersonalizedWorkout(assessment);
+    console.log("[WorkoutPlanPage] Received assessment:", assessment);
+    console.log("[WorkoutPlanPage] Generated plan summary:", {
+      totalDurationMin: plan.totalDurationMin,
+      difficulty: plan.difficulty,
+      focusTitle: plan.focusTitle,
+      hasHealthCondition: plan.hasHealthCondition,
+      adaptedFactors: plan.adaptedFactors,
+      sections: plan.sections.map((s) => ({
+        title: s.title,
+        subtitle: s.subtitle,
+        exerciseCount: s.exercises.length,
+      })),
+    });
+    return plan;
+  }, [assessment]);
+
+  const workoutSections: WorkoutSection[] = workoutPlan.sections;
+  const totalExercises = workoutPlan.totalExercises;
   const completedCount = completed.length;
   const progress =
     totalExercises === 0
@@ -144,8 +110,20 @@ export default function WorkoutPlanPage({
             Today's Workout
           </h1>
           <p className="mt-2 text-sm text-[#77796E]">
-            Your daily movement routine.
+            {workoutPlan.focusTitle} — {workoutPlan.focusDescription}
           </p>
+          {workoutPlan.adaptedFactors.length > 0 && (
+            <div className="mt-2.5 flex flex-wrap gap-2 text-xs text-[#526451]">
+              {workoutPlan.adaptedFactors.map((factor: string) => (
+                <span
+                  key={factor}
+                  className="rounded-full bg-[#EAECE3] px-3 py-1 font-medium"
+                >
+                  {factor}
+                </span>
+              ))}
+            </div>
+          )}
         </header>
 
         {/* Summary cards */}
@@ -154,7 +132,7 @@ export default function WorkoutPlanPage({
             <Clock size={21} className="text-[#71846A]" />
             <p className="mt-4 text-xs text-[#77796E]">Total Duration</p>
             <p className="mt-1 font-serif text-2xl text-[#344C3D]">
-              30 min
+              {workoutPlan.totalDurationMin} min
             </p>
           </article>
 
@@ -170,7 +148,7 @@ export default function WorkoutPlanPage({
             <Heart size={21} className="text-[#71846A]" />
             <p className="mt-4 text-xs text-[#77796E]">Difficulty</p>
             <p className="mt-1 font-serif text-2xl text-[#344C3D]">
-              Beginner
+              {workoutPlan.difficulty}
             </p>
           </article>
 
@@ -357,7 +335,7 @@ export default function WorkoutPlanPage({
                 Safety Notice
               </h2>
               <p className="mt-2 text-sm leading-6 text-[#626B5E]">
-                Start at a comfortable pace and use stable support when
+                {workoutPlan.safetyNotice} Start at a comfortable pace and use stable support when
                 needed. Stop if you experience pain, dizziness, chest
                 discomfort or unusual breathlessness. If you have a health
                 condition, balance concerns or concerns about bone strength,
