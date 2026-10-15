@@ -3,6 +3,8 @@ import {
   Activity,
   ArrowRight,
   CalendarDays,
+  ChevronDown,
+  ChevronUp,
   Droplets,
   Flame,
   Leaf,
@@ -35,6 +37,7 @@ interface MlRiskResult {
   risk_level: string;
   probabilities: Record<string, number>;
   top_factors: MlFactor[];
+  plainExplanation?: string | null;
 }
 
 interface MlResult {
@@ -165,6 +168,9 @@ function DashboardPage({
   const [sleepInput, setSleepInput] = useState("");
   const [activityInput, setActivityInput] = useState("");
   const [weightInput, setWeightInput] = useState("");
+
+  // Track whether each disease card's raw SHAP table is visible.
+  const [showTechnical, setShowTechnical] = useState<Record<string, boolean>>({});
 
   const [trackingLoading, setTrackingLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -1059,26 +1065,63 @@ function DashboardPage({
                       <h4 className="text-sm font-medium text-[#344C3D]">
                         Contributing factors
                       </h4>
+
+                      {/* Plain-language explanation from Gemini XAI */}
+                      {risk.plainExplanation ? (
+                        <p className="mt-3 text-sm leading-6 text-[#424A40]">
+                          {risk.plainExplanation}
+                        </p>
+                      ) : risk.top_factors?.length ? (
+                        <p className="mt-3 text-sm leading-6 text-[#77796F] italic">
+                          Plain-language explanation is unavailable for this result.
+                        </p>
+                      ) : null}
+
+                      {/* Technical details toggle */}
                       {risk.top_factors?.length ? (
-                        <ul className="mt-3 space-y-3">
-                          {risk.top_factors.map((factor, index) => (
-                            <li
-                              key={`${factor.feature}-${index}`}
-                              className="flex items-start justify-between gap-4 text-sm"
-                            >
-                              <span className="text-[#596458]">
-                                {formatFeatureName(factor.feature)}
-                              </span>
-                              <span className="shrink-0 text-right text-[#77796F]">
-                                Value: {String(factor.value)}
-                                <span className="block text-xs">
-                                  SHAP impact:{" "}
-                                  {Number(factor.impact).toFixed(3)}
-                                </span>
-                              </span>
-                            </li>
-                          ))}
-                        </ul>
+                        <div className="mt-4">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setShowTechnical((prev) => ({
+                                ...prev,
+                                [title]: !prev[title],
+                              }))
+                            }
+                            className="inline-flex items-center gap-1.5 text-xs text-[#81947B] hover:text-[#344C3D]"
+                          >
+                            {showTechnical[title] ? (
+                              <ChevronUp size={13} />
+                            ) : (
+                              <ChevronDown size={13} />
+                            )}
+                            {showTechnical[title]
+                              ? "Hide technical details"
+                              : "Show technical details (SHAP)"}
+                          </button>
+
+                          {showTechnical[title] && (
+                            <ul className="mt-3 space-y-3">
+                              {risk.top_factors.map((factor, index) => (
+                                <li
+                                  key={`${factor.feature}-${index}`}
+                                  className="flex items-start justify-between gap-4 text-sm"
+                                >
+                                  <span className="text-[#596458]">
+                                    {formatFeatureName(factor.feature)}
+                                  </span>
+                                  <span className="shrink-0 text-right text-[#77796F]">
+                                    Value: {String(factor.value)}
+                                    <span className="block text-xs">
+                                      SHAP impact:{" "}
+                                      {Number(factor.impact).toFixed(3)}
+                                    </span>
+                                  </span>
+                                </li>
+                              ))}
+                            </ul>
+                          )}
+                        </div>
                       ) : (
                         <p className="mt-2 text-sm text-[#77796F]">
                           No contributing factors available.

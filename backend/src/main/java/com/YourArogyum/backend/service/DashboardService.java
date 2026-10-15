@@ -10,6 +10,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -20,15 +21,18 @@ public class DashboardService {
     private final AssessmentRepository assessmentRepository;
     private final UserRepository userRepository;
     private final MlPredictionService mlPredictionService;
+    private final XaiExplanationService xaiExplanationService;
 
     public DashboardService(
             AssessmentRepository assessmentRepository,
             UserRepository userRepository,
-            MlPredictionService mlPredictionService) {
+            MlPredictionService mlPredictionService,
+            XaiExplanationService xaiExplanationService) {
 
         this.assessmentRepository = assessmentRepository;
         this.userRepository = userRepository;
         this.mlPredictionService = mlPredictionService;
+        this.xaiExplanationService = xaiExplanationService;
     }
 
     @Transactional(readOnly = true)
@@ -142,10 +146,60 @@ public class DashboardService {
         result.put("healthIndicators", healthIndicators);
 
         // Fetch predictions from the Python ML service.
-        result.put("mlPrediction", mlPredictionService.predict(assessment));
+        Map<String, Object> mlPrediction = mlPredictionService.predict(assessment);
+
+        // Enrich each disease result with a plain-language XAI explanation.
+        if (Boolean.TRUE.equals(mlPrediction.get("available"))) {
+            @SuppressWarnings("unchecked")
+            Map<String, Object> mlResult =
+                    (Map<String, Object>) mlPrediction.get("result");
+
+            if (mlResult != null) {
+                enrichWithExplanation(mlResult, "diabetes");
+                enrichWithExplanation(mlResult, "heart");
+            }
+        }
+
+        result.put("mlPrediction", mlPrediction);
 
         addUnavailableFeatures(result);
         return result;
+    }
+
+    /**
+     * Calls the XAI service for {@code diseaseKey} and injects
+     * {@code plainExplanation} directly into the disease sub-map.
+     * Failures are silent; the field is set to {@code null}.
+     */
+    @SuppressWarnings("unchecked")
+    private void enrichWithExplanation(Map<String, Object> mlResult,
+                                       String diseaseKey) {
+        Object raw = mlResult.get(diseaseKey);
+        if (!(raw instanceof Map)) {
+            return;
+        }
+
+        // mlResult values come from Jackson deserialisation as LinkedHashMap.
+        Map<String, Object> diseaseMap = (Map<String, Object>) raw;
+        // Make a mutable copy so we can add the new field.
+        Map<String, Object> mutable = new LinkedHashMap<>(diseaseMap);
+
+        String riskLevel = String.valueOf(mutable.getOrDefault("risk_level", ""));
+
+        List<Map<String, Object>> topFactors = null;
+        Object rawFactors = mutable.get("top_factors");
+        if (rawFactors instanceof List<?> list) {
+            topFactors = list.stream()
+                    .filter(item -> item instanceof Map)
+                    .map(item -> (Map<String, Object>) item)
+                    .toList();
+        }
+
+        String friendlyDisease = diseaseKey.equals("heart") ? "heart disease" : diseaseKey;
+        String explanation = xaiExplanationService.explain(friendlyDisease, riskLevel, topFactors);
+        mutable.put("plainExplanation", explanation);
+
+        mlResult.put(diseaseKey, mutable);
     }
 
     private Double calculateDailyCalories(
