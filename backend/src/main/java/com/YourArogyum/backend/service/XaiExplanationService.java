@@ -1,3 +1,4 @@
+
 package com.YourArogyum.backend.service;
 
 import org.springframework.beans.factory.annotation.Value;
@@ -7,6 +8,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
+
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 
@@ -14,9 +16,14 @@ import java.util.List;
 import java.util.Map;
 
 /**
- * Translates raw SHAP factors from the ML service into a 2-3 sentence
- * plain-language explanation using Gemini.  Failures are swallowed so the
- * dashboard response is never broken by an XAI call.
+ * Converts SHAP feature contributions from the ML service into a
+ * plain-language explanation using Gemini.
+ *
+ * SHAP contributions describe the model's prediction behavior.
+ * They do not establish actual medical risk or causation.
+ *
+ * Failures return null so an unavailable explanation does not
+ * prevent the rest of the dashboard from loading.
  */
 @Service
 public class XaiExplanationService {
@@ -34,20 +41,23 @@ public class XaiExplanationService {
     public XaiExplanationService() {
         var factory =
                 new org.springframework.http.client.SimpleClientHttpRequestFactory();
+
         factory.setConnectTimeout(java.time.Duration.ofSeconds(8));
         factory.setReadTimeout(java.time.Duration.ofSeconds(30));
+
         this.restTemplate = new RestTemplate(factory);
     }
 
     /**
-     * @param disease     "diabetes" or "heart disease"
-     * @param riskLevel   "Low", "Moderate", or "High"
-     * @param topFactors  list of maps, each with keys "feature", "value", "impact"
-     * @return plain-language explanation string, or {@code null} if anything fails
+     * @param disease    Disease category being explained
+     * @param riskLevel  Predicted model category
+     * @param topFactors SHAP factors containing feature, value and impact
+     * @return Plain-language explanation, or null if unavailable
      */
-    public String explain(String disease,
-                          String riskLevel,
-                          List<Map<String, Object>> topFactors) {
+    public String explain(
+            String disease,
+            String riskLevel,
+            List<Map<String, Object>> topFactors) {
 
         if (apiKey == null || apiKey.isBlank()) {
             return null;
@@ -61,26 +71,48 @@ public class XaiExplanationService {
             String factorLines = buildFactorLines(topFactors);
 
             String prompt = """
-                    You are a health educator writing for a general audience with no medical training.
-                    
-                    The user received a %s risk level (%s) from an experimental wellness model \
-                    trained on synthetic data. The model is NOT a clinical diagnostic tool.
-                    
-                    Top contributing factors that the model's SHAP analysis highlighted:
+                    You are a health educator writing for a general audience.
+
+                    The user received a predicted category of "%s" for %s
+                    from an experimental wellness model trained on synthetic
+                    data. This model is not clinically validated and is
+                    not a medical diagnostic tool.
+
+                    The following are SHAP contributions for the model's
+                    predicted category:
+
                     %s
-                    
-                    Write 2-3 clear, friendly sentences that explain in everyday language why \
-                    these factors may have influenced the risk estimate. \
-                    Do not diagnose the user. Do not use technical statistics or SHAP terminology. \
-                    Do not invent factors that are not listed above. \
-                    End with: "This is not a medical diagnosis — speak to a healthcare professional \
-                    for personalised advice."
-                    """.formatted(disease, riskLevel, factorLines);
+
+                    Explain the most important listed factors in 2-3 clear,
+                    friendly sentences using everyday language.
+
+                    A positive SHAP impact means that a factor supports the
+                    model's predicted category. A negative impact means that
+                    it opposes the predicted category. An approximately zero
+                    impact has little contribution. Larger absolute impacts
+                    indicate stronger relative contributions among the listed
+                    factors for this prediction.
+
+                    These directions describe the model's behavior. Do not
+                    interpret them as proof that real-world disease risk
+                    increased or decreased. Do not claim causation, diagnose
+                    the user, invent factors, or make unsupported medical
+                    recommendations. Avoid technical statistics and SHAP
+                    terminology in the explanation.
+
+                    End with this exact sentence:
+                    "This is not a medical diagnosis — speak to a healthcare
+                    professional for personalised advice."
+                    """.formatted(riskLevel, disease, factorLines);
 
             Map<String, Object> requestBody = Map.of(
                     "contents", List.of(
-                            Map.of("role", "user",
-                                    "parts", List.of(Map.of("text", prompt)))
+                            Map.of(
+                                    "role", "user",
+                                    "parts", List.of(
+                                            Map.of("text", prompt)
+                                    )
+                            )
                     ),
                     "generationConfig", Map.of(
                             "maxOutputTokens", 300,
@@ -104,9 +136,13 @@ public class XaiExplanationService {
             }
 
             JsonNode root = objectMapper.readTree(raw);
+
             JsonNode text = root
-                    .path("candidates").path(0)
-                    .path("content").path("parts").path(0)
+                    .path("candidates")
+                    .path(0)
+                    .path("content")
+                    .path("parts")
+                    .path(0)
                     .path("text");
 
             if (text.isMissingNode() || text.asText().isBlank()) {
@@ -116,34 +152,98 @@ public class XaiExplanationService {
             return text.asText().strip();
 
         } catch (Exception ex) {
-            // Fail silently — the rest of the dashboard response must still work.
-            System.err.println("[XaiExplanationService] Explanation call failed: "
-                    + ex.getClass().getSimpleName() + ": " + ex.getMessage());
+            // Keep the dashboard available if Gemini explanations fail.
+            System.err.println(
+                    "[XaiExplanationService] Explanation call failed: "
+                            + ex.getClass().getSimpleName()
+                            + ": "
+                            + ex.getMessage()
+            );
+
             return null;
         }
     }
 
-    // ---------------------------------------------------------------------------
+    /**
+     * Converts SHAP results into clear descriptions of their
+     * direction relative to the predicted model category.
+     */
+    private static String buildFactorLines(
+            List<Map<String, Object>> factors) {
 
-    private static String buildFactorLines(List<Map<String, Object>> factors) {
         StringBuilder sb = new StringBuilder();
+
         for (Map<String, Object> factor : factors) {
-            String feature = friendlyName(String.valueOf(
-                    factor.getOrDefault("feature", "unknown")));
+
+            String feature = friendlyName(
+                    String.valueOf(
+                            factor.getOrDefault("feature", "unknown")
+                    )
+            );
+
             Object rawImpact = factor.get("impact");
-            double impact = rawImpact instanceof Number n ? n.doubleValue() : 0.0;
-            String direction = impact > 0 ? "raised risk" : "lowered risk";
-            sb.append("- ").append(feature).append(": ").append(direction).append("\n");
+
+            double impact = rawImpact instanceof Number number
+                    ? number.doubleValue()
+                    : 0.0;
+
+            if (!Double.isFinite(impact)) {
+                impact = 0.0;
+            }
+
+            String direction;
+
+            if (Math.abs(impact) < 1e-9) {
+                direction =
+                        "has approximately no contribution to the "
+                                + "predicted category";
+
+            } else if (impact > 0) {
+                direction =
+                        "supports the model's predicted category";
+
+            } else {
+                direction =
+                        "opposes the model's predicted category";
+            }
+
+            sb.append("- ")
+                    .append(feature)
+                    .append(": ")
+                    .append(direction)
+                    .append(" (absolute SHAP contribution: ")
+                    .append(String.format(
+                            java.util.Locale.ROOT,
+                            "%.6f",
+                            Math.abs(impact)
+                    ))
+                    .append(")\n");
         }
+
         return sb.toString().strip();
     }
 
+    /**
+     * Converts technical feature names into more readable labels.
+     */
     private static String friendlyName(String feature) {
         return feature
                 .replace("_", " ")
-                .replace("family diabetes", "family history of diabetes")
-                .replace("family heart", "family history of heart disease")
-                .replace("sleep hours", "sleep duration")
-                .replace("bmi", "body mass index (BMI)");
+                .replace(
+                        "family diabetes",
+                        "family history of diabetes"
+                )
+                .replace(
+                        "family heart",
+                        "family history of heart disease"
+                )
+                .replace(
+                        "sleep hours",
+                        "sleep duration"
+                )
+                .replace(
+                        "bmi",
+                        "body mass index (BMI)"
+                );
     }
 }

@@ -8,6 +8,7 @@ import {
   Salad,
   TrendingUp,
   UserRound,
+  Watch,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
@@ -41,6 +42,7 @@ const navigation = [
   { id: "diet-plan", label: "Diet Plan", icon: Salad },
   { id: "workout-plan", label: "Workout Plan", icon: Dumbbell },
   { id: "progress", label: "My Progress", icon: TrendingUp },
+  { id: "wearable-tracker", label: "Wearable Tracker", icon: Watch },
   { id: "profile", label: "My Profile", icon: UserRound },
 ] as const;
 

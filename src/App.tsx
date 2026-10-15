@@ -13,6 +13,7 @@ import WorkoutPlanPage from "./pages/WorkoutPlanPage";
 import ProgressPage from "./pages/ProgressPage";
 import ProfilePage from "./pages/ProfilePage";
 import AppLayout from "./components/AppLayout";
+import WearableTrackerPage from "./pages/WearableTrackerPage";
 
 import { API_BASE_URL } from "./api/client";
 import {
@@ -224,12 +225,13 @@ function App() {
   }
 
   const showAppLayout =
-    currentPage === "dashboard" ||
-    currentPage === "ai-assistant" ||
-    currentPage === "diet-plan" ||
-    currentPage === "workout-plan" ||
-    currentPage === "progress" ||
-    currentPage === "profile";
+      currentPage === "dashboard" ||
+      currentPage === "ai-assistant" ||
+      currentPage === "diet-plan" ||
+      currentPage === "workout-plan" ||
+      currentPage === "progress" ||
+      currentPage === "wearable-tracker" ||
+      currentPage === "profile";
 
   return (
     <>
@@ -287,6 +289,10 @@ function App() {
   />
 )}
 
+          {currentPage === "wearable-tracker" && (
+              <WearableTrackerPage />
+          )}
+
           {currentPage === "profile" && (
             <ProfilePage
               assessmentData={assessmentData}
@@ -303,6 +309,7 @@ function App() {
           key={isEditingAssessment ? "edit-assessment" : "new-assessment"}
           initialData={assessmentData}
           onComplete={handleAssessmentComplete}
+          isEditing={isEditingAssessment}
           onBack={() => {
             if (isEditingAssessment) {
               setIsEditingAssessment(false);
