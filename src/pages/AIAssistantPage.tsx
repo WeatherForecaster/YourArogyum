@@ -67,7 +67,7 @@ function AIAssistantPage({ onBack: _onBack }: AIAssistantPageProps) {
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           throw new Error(
-            "Your session may have expired. Please log in again."
+            "Please log in to your account to use the AI health assistant."
           );
         }
 

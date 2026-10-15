@@ -1,6 +1,7 @@
 package com.YourArogyum.backend.service;
 
 import com.YourArogyum.backend.dto.ChatRequest;
+import com.YourArogyum.backend.entity.Assessment;
 import tools.jackson.databind.JsonNode;
 import tools.jackson.databind.ObjectMapper;
 import org.springframework.beans.factory.annotation.Value;
@@ -47,6 +48,10 @@ public class GeminiChatService {
                     + "gemini-3.5-flash-lite:generateContent";
 
     public String generateReply(List<ChatRequest.Message> messages) {
+        return generateReply(messages, null);
+    }
+
+    public String generateReply(List<ChatRequest.Message> messages, Assessment assessment) {
         if (messages == null || messages.isEmpty()) {
             throw new IllegalArgumentException("Please enter a message.");
         }
@@ -94,6 +99,8 @@ public class GeminiChatService {
             throw new IllegalArgumentException("Please enter a message.");
         }
 
+        String profileBlock = buildProfileBlock(assessment);
+
         String systemInstructionText = """
                 You are YourArogyum's personal wellness assistant.
 
@@ -116,7 +123,9 @@ public class GeminiChatService {
 
                 Explain uncertainty and remind users that general wellness
                 information is not a substitute for a clinician.
-                """ + (retrieved.context().isBlank()
+                """
+                + profileBlock
+                + (retrieved.context().isBlank()
                 ? ""
                 : "\n\nRetrieved health reference passages:\n" + retrieved.context());
 
@@ -274,5 +283,66 @@ public class GeminiChatService {
             throw new IllegalStateException(
                     "The AI retry was interrupted. Please try again.", e);
         }
+    }
+
+    private String buildProfileBlock(Assessment assessment) {
+        if (assessment == null) {
+            return "";
+        }
+
+        StringBuilder sb = new StringBuilder();
+        if (hasValue(assessment.getAge())) {
+            sb.append("- Age: ").append(assessment.getAge().trim()).append("\n");
+        }
+        if (hasValue(assessment.getSex())) {
+            sb.append("- Gender/Sex: ").append(assessment.getSex().trim()).append("\n");
+        }
+        if (hasValue(assessment.getHeight())) {
+            sb.append("- Height: ").append(assessment.getHeight().trim()).append(" cm\n");
+        }
+        if (hasValue(assessment.getWeight())) {
+            sb.append("- Weight: ").append(assessment.getWeight().trim()).append(" kg\n");
+        }
+        if (hasValue(assessment.getConditions())) {
+            sb.append("- Medical conditions: ").append(assessment.getConditions().trim()).append("\n");
+        }
+        String allergies = combineAllergies(assessment.getAllergies(), assessment.getFoodAllergies());
+        if (!allergies.isBlank()) {
+            sb.append("- Allergies: ").append(allergies).append("\n");
+        }
+        if (hasValue(assessment.getDiet())) {
+            sb.append("- Diet preference: ").append(assessment.getDiet().trim()).append("\n");
+        }
+        if (hasValue(assessment.getGoal())) {
+            sb.append("- Fitness/wellness goal: ").append(assessment.getGoal().trim()).append("\n");
+        }
+
+        if (sb.isEmpty()) {
+            return "";
+        }
+
+        return "\n\nUser health profile (tailor advice to this user context, strictly respecting dietary preferences, conditions, and allergies):\n"
+                + sb.toString().trim() + "\n";
+    }
+
+    private static boolean hasValue(String str) {
+        if (str == null || str.isBlank()) {
+            return false;
+        }
+        String lower = str.trim().toLowerCase();
+        return !lower.equals("none") && !lower.equals("nil") && !lower.equals("n/a") && !lower.equals("no") && !lower.equals("healthy");
+    }
+
+    private static String combineAllergies(String general, String food) {
+        boolean hasG = hasValue(general);
+        boolean hasF = hasValue(food);
+        if (hasG && hasF) {
+            return general.trim() + ", " + food.trim();
+        } else if (hasG) {
+            return general.trim();
+        } else if (hasF) {
+            return food.trim();
+        }
+        return "";
     }
 }
