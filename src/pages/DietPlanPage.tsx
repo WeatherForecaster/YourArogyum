@@ -29,6 +29,8 @@ import {
   saveMyDietPlanState,
   type DietPlanStatePayload,
 } from "../services/dietPlan";
+import HydrationReminderCard from "../components/HydrationReminderCard";
+import { getDailyWaterTargetMl } from "../utils/hydrationReminder";
 
 interface DietPlanPageProps {
   onBack: () => void;
@@ -527,6 +529,11 @@ export default function DietPlanPage({ onBack }: DietPlanPageProps) {
     [assessment],
   );
 
+  const dietWaterTargetMl = useMemo(
+    () => getDailyWaterTargetMl(),
+    []
+  );
+
   const profileDetails = [
     { label: "Diet preference", value: assessment?.diet },
     { label: "Health goal", value: assessment?.goal },
@@ -784,6 +791,16 @@ ${availableNutritionFoodNames.join(" | ")}
             <button type="button" onClick={() => setWaterGlasses((count) => Math.min(20, count + 1))} disabled={waterGlasses === 20} className="h-10 rounded-xl bg-[#344C3D] px-4 text-sm text-white transition hover:bg-[#263A2E] disabled:opacity-40">+ Add glass</button>
           </div>
         </section>
+
+        <HydrationReminderCard
+          currentWaterMl={waterGlasses * 250}
+          targetWaterMl={dietWaterTargetMl}
+          onAddWater={(ml) =>
+            setWaterGlasses((count) =>
+              Math.min(20, count + Math.max(1, Math.round(ml / 250)))
+            )
+          }
+        />
 
         <section className="rounded-2xl border border-[#E1E2D7] bg-[#FCFAF5] p-5 sm:p-6">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">

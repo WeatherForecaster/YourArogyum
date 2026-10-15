@@ -20,6 +20,8 @@ import type { AssessmentData } from "../services/assessment";
 import type { HomeSection } from "../types/navigation";
 import { classifyGoalProgress } from "../utils/goalProgress";
 import { API_BASE_URL } from "../api/client";
+import HydrationReminderCard from "../components/HydrationReminderCard";
+import { DEFAULT_WATER_TARGET_ML } from "../utils/hydrationReminder";
 
 interface DashboardPageProps {
   assessmentData: AssessmentData | null;
@@ -168,6 +170,16 @@ function DashboardPage({
   const [sleepInput, setSleepInput] = useState("");
   const [activityInput, setActivityInput] = useState("");
   const [weightInput, setWeightInput] = useState("");
+
+  const targetWaterMl = DEFAULT_WATER_TARGET_ML;
+
+  const currentWaterMl =
+    todayLog.waterMl ?? (Number(waterInput) || 0);
+
+  const handleAddWater = (ml: number) => {
+    const current = Number(waterInput) || todayLog.waterMl || 0;
+    setWaterInput(String(current + ml));
+  };
 
   // Track whether each disease card's raw SHAP table is visible.
   const [showTechnical, setShowTechnical] = useState<Record<string, boolean>>({});
@@ -570,7 +582,7 @@ function DashboardPage({
             subtitle="Record today's intake and habits. Your entries are saved to your account."
           />
 
-          <div className="mt-5 grid items-start gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="mt-5 grid items-stretch gap-5 lg:grid-cols-[1.15fr_0.85fr]">
             <article className="rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-5 shadow-[0_8px_30px_rgba(52,76,61,0.04)] sm:p-7">
               <CardHeading
                 icon={CalendarDays}
@@ -773,10 +785,18 @@ function DashboardPage({
                   </div>
                 )}
               </article>
+
+
             </div>
           </div>
         </section>
-
+          <div className="mt-5">
+            <HydrationReminderCard
+              currentWaterMl={currentWaterMl}
+              targetWaterMl={targetWaterMl}
+              onAddWater={handleAddWater}
+            />
+          </div>
         <section className="grid gap-5 lg:grid-cols-2">
           <article className="rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-5 sm:p-6">
             <div className="flex items-center justify-between gap-3">
