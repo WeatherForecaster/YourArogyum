@@ -33,3 +33,10 @@ Practical sleep habits that may help include going to bed and waking up at consi
 Source for sleep habits: https://www.cdc.gov/sleep/about/
 
 Source: https://www.cdc.gov/sleep/about/
+
+## Type 2 diabetes prevention and glycemic management
+
+Evidence-based lifestyle habits help prevent or delay the onset of type 2 diabetes. Key strategies include maintaining a healthy body weight, engaging in daily physical exercise, choosing meals rich in dietary fibre such as legumes and whole grains, and minimizing sweetened drinks and refined carbohydrates. Regular health checkups and blood glucose screenings assist in early detection and metabolic care.
+
+Source: https://www.who.int/news-room/fact-sheets/detail/diabetes
+
