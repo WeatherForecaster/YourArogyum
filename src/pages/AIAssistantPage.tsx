@@ -1,6 +1,11 @@
+
 import { useState, type FormEvent, type KeyboardEvent } from "react";
 import { ArrowUp, Bot, User } from "lucide-react";
 import { API_BASE_URL } from "../api/client";
+import {
+  getWearableDemoPromptContext,
+  isWearableDemoEnabled,
+} from "../services/wearableDemo";
 
 interface AIAssistantPageProps {
   onBack: () => void;
@@ -18,18 +23,25 @@ interface ChatResponse {
 
 const API_URL = `${API_BASE_URL}/api/chat`;
 
-function AIAssistantPage({ onBack: _onBack }: AIAssistantPageProps) {
+function AIAssistantPage({
+                           onBack: _onBack,
+                         }: AIAssistantPageProps) {
   const [input, setInput] = useState("");
   const [messages, setMessages] = useState<Message[]>([
     {
       id: 1,
       role: "assistant",
       content:
-        "Hi! I'm your YourArogyum wellness assistant. 🌿 Ask me about nutrition, physical activity, sleep, hydration, or preventive wellness. Let's explore practical, everyday habits together.",
+          "Hi! I'm your YourArogyum wellness assistant. 🌿 Ask me about nutrition, physical activity, sleep, hydration, or preventive wellness. Let's explore practical, everyday habits together.",
     },
   ]);
+
   const [notice, setNotice] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+
+  // Read the shared mode setting.
+  // Wearable values are simulated demonstration data, not live measurements.
+  const trackerModeEnabled = isWearableDemoEnabled();
 
   const sendMessage = async (text: string) => {
     const trimmed = text.trim();
@@ -50,6 +62,43 @@ function AIAssistantPage({ onBack: _onBack }: AIAssistantPageProps) {
     setIsLoading(true);
 
     try {
+      // Fetch the shared context at send time so the selected mode
+      // controls whether wearable demo information is sent to the AI.
+      const wearableContext = getWearableDemoPromptContext();
+
+      // Add the wearable context to the latest user message only.
+      // The visible conversation remains unchanged.
+      const outgoingMessages = updatedMessages.map(
+          (message, index) => {
+            let content = message.content;
+
+            const isLatestUserMessage =
+                index === updatedMessages.length - 1 &&
+                message.role === "user";
+
+            if (isLatestUserMessage && wearableContext) {
+              content = `${content}
+
+YOURAROGYUM TRACKER MODE CONTEXT
+${wearableContext}
+
+Instructions:
+- Treat all wearable values above as simulated example data, not actual measurements.
+- Use these values only as limited context for general wellness suggestions when relevant.
+- Clearly identify sample data when discussing it.
+- Do not diagnose a medical condition or use simulated heart rate or calories to prescribe exercise intensity.
+- Do not claim to have connected to or read a real wearable device.
+- Respect the user's stated allergies, medical conditions, dietary restrictions, and other explicit safety information.
+- If the sample readings are irrelevant to the question, answer the question normally.`;
+            }
+
+            return {
+              role: message.role,
+              content,
+            };
+          }
+      );
+
       const response = await fetch(API_URL, {
         method: "POST",
         credentials: "include",
@@ -57,17 +106,14 @@ function AIAssistantPage({ onBack: _onBack }: AIAssistantPageProps) {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          messages: updatedMessages.map(({ role, content }) => ({
-            role,
-            content,
-          })),
+          messages: outgoingMessages,
         }),
       });
 
       if (!response.ok) {
         if (response.status === 401 || response.status === 403) {
           throw new Error(
-            "Please log in to your account to use the AI health assistant."
+              "Please log in to your account to use the AI health assistant."
           );
         }
 
@@ -76,13 +122,16 @@ function AIAssistantPage({ onBack: _onBack }: AIAssistantPageProps) {
         }
 
         throw new Error(
-          "The assistant could not respond. Please try again."
+            "The assistant could not respond. Please try again."
         );
       }
 
       const data: ChatResponse = await response.json();
 
-      if (typeof data.reply !== "string" || !data.reply.trim()) {
+      if (
+          typeof data.reply !== "string" ||
+          !data.reply.trim()
+      ) {
         throw new Error("The assistant returned an empty response.");
       }
 
@@ -96,9 +145,9 @@ function AIAssistantPage({ onBack: _onBack }: AIAssistantPageProps) {
       ]);
     } catch (error) {
       setNotice(
-        error instanceof Error
-          ? error.message
-          : "Unable to connect to the assistant. Please try again."
+          error instanceof Error
+              ? error.message
+              : "Unable to connect to the assistant. Please try again."
       );
     } finally {
       setIsLoading(false);
@@ -110,11 +159,13 @@ function AIAssistantPage({ onBack: _onBack }: AIAssistantPageProps) {
     void sendMessage(input);
   };
 
-  const handleKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
+  const handleKeyDown = (
+      event: KeyboardEvent<HTMLTextAreaElement>
+  ) => {
     if (
-      event.key === "Enter" &&
-      !event.shiftKey &&
-      !event.nativeEvent.isComposing
+        event.key === "Enter" &&
+        !event.shiftKey &&
+        !event.nativeEvent.isComposing
     ) {
       event.preventDefault();
       void sendMessage(input);
@@ -122,124 +173,153 @@ function AIAssistantPage({ onBack: _onBack }: AIAssistantPageProps) {
   };
 
   return (
-    <main className="h-full min-h-0 w-full overflow-hidden bg-[#F6F2E9] p-3 text-[#30382F] sm:p-5">
-      <section className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-[#344C3D]/15 bg-white shadow-sm">
-        {/* Chat panel header */}
-        <header className="flex shrink-0 items-center gap-4 border-b border-[#344C3D]/10 bg-[#344C3D] px-5 py-4 text-white sm:px-7">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/10">
-            <Bot size={26} />
-          </div>
+      <main className="h-full min-h-0 w-full overflow-hidden bg-[#F6F2E9] p-3 text-[#30382F] sm:p-5">
+        <section className="mx-auto flex h-full min-h-0 w-full max-w-7xl flex-col overflow-hidden rounded-2xl border border-[#344C3D]/15 bg-white shadow-sm">
+          {/* Chat panel header */}
+          <header className="flex shrink-0 items-center gap-4 border-b border-[#344C3D]/10 bg-[#344C3D] px-5 py-4 text-white sm:px-7">
+            <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-white/10">
+              <Bot size={26} />
+            </div>
 
-          <div className="min-w-0">
-            <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#DCE3D5]">
-              PERSONAL WELLNESS
-            </p>
-            <h1 className="mt-1 font-serif text-xl sm:text-2xl">
-              AI Health Assistant
-            </h1>
-            <p className="mt-1 text-xs text-white/70 sm:text-sm">
-              Your space for everyday health and wellness.
-            </p>
-          </div>
-        </header>
-
-        {/* Conversation area */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#FCFBF8]">
-          <div
-            className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-5 sm:p-8 lg:px-12 lg:py-9"
-            aria-label="Conversation"
-            aria-live="polite"
-          >
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex items-start gap-3 sm:gap-4 ${
-                  message.role === "user" ? "flex-row-reverse" : ""
-                }`}
-              >
-                <div
-                  className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
-                    message.role === "assistant"
-                      ? "bg-[#DCE3D5] text-[#344C3D]"
-                      : "bg-[#E9E1D1] text-[#8A663F]"
-                  }`}
-                >
-                  {message.role === "assistant" ? (
-                    <Bot size={20} />
-                  ) : (
-                    <User size={20} />
-                  )}
-                </div>
-
-                <div
-                  className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm leading-7 sm:max-w-[75%] sm:px-5 sm:py-4 sm:text-[15px] ${
-                    message.role === "assistant"
-                      ? "rounded-tl-sm border border-[#344C3D]/5 bg-[#F1F0E8] text-[#424A40]"
-                      : "rounded-tr-sm bg-[#344C3D] text-white"
-                  }`}
-                >
-                  {message.content}
-                </div>
-              </div>
-            ))}
-
-            {isLoading && (
-              <div className="flex items-start gap-3 sm:gap-4">
-                <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#DCE3D5] text-[#344C3D]">
-                  <Bot size={20} />
-                </div>
-                <div
-                  role="status"
-                  className="rounded-2xl rounded-tl-sm bg-[#F1F0E8] px-4 py-3 text-sm text-[#424A40]"
-                >
-                  Thinking...
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Fixed message composer */}
-          <div className="shrink-0 border-t border-[#344C3D]/10 bg-white px-4 py-4 sm:px-7 sm:py-5 lg:px-10">
-            {notice && (
-              <p
-                role="alert"
-                className="mb-3 text-xs leading-5 text-[#8A663F]"
-              >
-                {notice}
+            <div className="min-w-0">
+              <p className="text-[10px] font-medium uppercase tracking-[0.2em] text-[#DCE3D5]">
+                PERSONAL WELLNESS
               </p>
-            )}
 
-            <form onSubmit={handleSubmit}>
-              <div className="flex items-end gap-3 rounded-xl border border-[#344C3D]/20 bg-[#FCFBF8] p-2 transition focus-within:border-[#71846B] focus-within:ring-2 focus-within:ring-[#DCE3D5]/60 sm:p-3">
+              <h1 className="mt-1 font-serif text-xl sm:text-2xl">
+                AI Health Assistant
+              </h1>
+
+              <p className="mt-1 text-xs text-white/70 sm:text-sm">
+                Your space for everyday health and wellness.
+              </p>
+            </div>
+          </header>
+
+          {/* Conversation area */}
+          <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#FCFBF8]">
+            <div
+                className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain p-5 sm:p-8 lg:px-12 lg:py-9"
+                aria-label="Conversation"
+                aria-live="polite"
+            >
+              {trackerModeEnabled && (
+                  <div
+                      role="note"
+                      className="rounded-xl border border-[#C7D5C2] bg-[#EAF0E5] p-4"
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-lg bg-white p-2 text-[#526B50]">
+                        <Bot size={19} />
+                      </div>
+
+                      <div>
+                        <p className="text-sm font-semibold text-[#344C3D]">
+                          Tracker Mode enabled
+                        </p>
+
+                        <p className="mt-1 text-xs leading-5 text-[#526451]">
+                          The assistant can use your shared sample steps,
+                          sleep, heart-rate and activity values when relevant.
+                          These are simulated demonstration values, not live
+                          measurements from a watch.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+              )}
+
+              {messages.map((message) => (
+                  <div
+                      key={message.id}
+                      className={`flex items-start gap-3 sm:gap-4 ${
+                          message.role === "user" ? "flex-row-reverse" : ""
+                      }`}
+                  >
+                    <div
+                        className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${
+                            message.role === "assistant"
+                                ? "bg-[#DCE3D5] text-[#344C3D]"
+                                : "bg-[#E9E1D1] text-[#8A663F]"
+                        }`}
+                    >
+                      {message.role === "assistant" ? (
+                          <Bot size={20} />
+                      ) : (
+                          <User size={20} />
+                      )}
+                    </div>
+
+                    <div
+                        className={`max-w-[85%] whitespace-pre-wrap break-words rounded-2xl px-4 py-3 text-sm leading-7 sm:max-w-[75%] sm:px-5 sm:py-4 sm:text-[15px] ${
+                            message.role === "assistant"
+                                ? "rounded-tl-sm border border-[#344C3D]/5 bg-[#F1F0E8] text-[#424A40]"
+                                : "rounded-tr-sm bg-[#344C3D] text-white"
+                        }`}
+                    >
+                      {message.content}
+                    </div>
+                  </div>
+              ))}
+
+              {isLoading && (
+                  <div className="flex items-start gap-3 sm:gap-4">
+                    <div className="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-[#DCE3D5] text-[#344C3D]">
+                      <Bot size={20} />
+                    </div>
+
+                    <div
+                        role="status"
+                        className="rounded-2xl rounded-tl-sm bg-[#F1F0E8] px-4 py-3 text-sm text-[#424A40]"
+                    >
+                      Thinking...
+                    </div>
+                  </div>
+              )}
+            </div>
+
+            {/* Fixed message composer */}
+            <div className="shrink-0 border-t border-[#344C3D]/10 bg-white px-4 py-4 sm:px-7 sm:py-5 lg:px-10">
+              {notice && (
+                  <p
+                      role="alert"
+                      className="mb-3 text-xs leading-5 text-[#8A663F]"
+                  >
+                    {notice}
+                  </p>
+              )}
+
+              <form onSubmit={handleSubmit}>
+                <div className="flex items-end gap-3 rounded-xl border border-[#344C3D]/20 bg-[#FCFBF8] p-2 transition focus-within:border-[#71846B] focus-within:ring-2 focus-within:ring-[#DCE3D5]/60 sm:p-3">
                 <textarea
-                  value={input}
-                  onChange={(event) => setInput(event.target.value)}
-                  onKeyDown={handleKeyDown}
-                  rows={1}
-                  disabled={isLoading}
-                  placeholder="Type your health or wellness question..."
-                  aria-label="Your message"
-                  className="max-h-28 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-3 py-2.5 text-sm leading-6 text-[#30382F] outline-none placeholder:text-[#999A90] disabled:opacity-60"
+                    value={input}
+                    onChange={(event) => setInput(event.target.value)}
+                    onKeyDown={handleKeyDown}
+                    rows={1}
+                    disabled={isLoading}
+                    placeholder="Type your health or wellness question..."
+                    aria-label="Your message"
+                    className="max-h-28 min-h-11 min-w-0 flex-1 resize-none bg-transparent px-3 py-2.5 text-sm leading-6 text-[#30382F] outline-none placeholder:text-[#999A90] disabled:opacity-60"
                 />
 
-                <button
-                  type="submit"
-                  disabled={!input.trim() || isLoading}
-                  aria-label="Send message"
-                  className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#344C3D] text-white transition hover:bg-[#263A2E] disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <ArrowUp size={21} />
-                </button>
-              </div>
+                  <button
+                      type="submit"
+                      disabled={!input.trim() || isLoading}
+                      aria-label="Send message"
+                      className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#344C3D] text-white transition hover:bg-[#263A2E] disabled:cursor-not-allowed disabled:opacity-40"
+                  >
+                    <ArrowUp size={21} />
+                  </button>
+                </div>
 
-              <p className="mt-2 text-center text-[11px] text-[#898A80]">
-                General wellness information only.
-              </p>
-            </form>
+                <p className="mt-2 text-center text-[11px] text-[#898A80]">
+                  General wellness information only.
+                </p>
+              </form>
+            </div>
           </div>
-        </div>
-      </section>
-    </main>
+        </section>
+      </main>
   );
 }
 

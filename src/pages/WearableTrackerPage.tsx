@@ -1,5 +1,5 @@
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
     Activity,
     CalendarDays,
@@ -12,40 +12,30 @@ import {
     Watch,
 } from "lucide-react";
 
-const STORAGE_KEY = "yourarogyum:wearable-demo:enabled";
-
-function readEnabled(): boolean {
-    try {
-        return localStorage.getItem(STORAGE_KEY) === "true";
-    } catch {
-        return false;
-    }
-}
-
-function saveEnabled(value: boolean) {
-    try {
-        localStorage.setItem(STORAGE_KEY, String(value));
-    } catch {
-        // The feature still works for this session if storage is unavailable.
-    }
-}
-
-const weeklyActivity = [
-    { day: "Mon", steps: 5240 },
-    { day: "Tue", steps: 6810 },
-    { day: "Wed", steps: 4320 },
-    { day: "Thu", steps: 7950 },
-    { day: "Fri", steps: 6100 },
-    { day: "Sat", steps: 8420 },
-    { day: "Sun", steps: 6842 },
-];
+import {
+    WEARABLE_DEMO_DATA,
+    isWearableDemoEnabled,
+    setWearableDemoEnabled,
+} from "../services/wearableDemo";
 
 export default function WearableTrackerPage() {
-    const [enabled, setEnabled] = useState(readEnabled);
+    const [enabled, setEnabled] = useState(isWearableDemoEnabled);
+
+    const data = WEARABLE_DEMO_DATA;
+
+    const stepProgress = Math.min(
+        100,
+        Math.round((data.steps / data.dailyStepGoal) * 100)
+    );
+
+    const stepsRemaining = Math.max(
+        0,
+        data.dailyStepGoal - data.steps
+    );
 
     const setTrackerEnabled = (value: boolean) => {
         setEnabled(value);
-        saveEnabled(value);
+        setWearableDemoEnabled(value);
     };
 
     return (
@@ -56,12 +46,15 @@ export default function WearableTrackerPage() {
                         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-[#A87945]">
                             OPTIONAL FEATURE
                         </p>
+
                         <h1 className="mt-2 font-serif text-3xl font-semibold text-[#344C3D] sm:text-4xl">
                             Wearable Tracker
                         </h1>
+
                         <p className="mt-2 max-w-xl text-sm leading-6 text-[#77796F]">
                             Explore activity, sleep and heart-rate insights in one place.
-                            You can use this feature or leave it disabled.
+                            Enable the tracker to include the sample readings in relevant
+                            wellness recommendations.
                         </p>
                     </div>
 
@@ -89,9 +82,10 @@ export default function WearableTrackerPage() {
                                 </h2>
 
                                 <p className="mt-3 text-sm leading-6 text-[#77796F]">
-                                    Try the optional wearable dashboard with illustrative
-                                    health and activity readings. No watch, phone app or
-                                    account connection is required for this demo.
+                                    Enable this optional demo to see illustrative health
+                                    readings and use their activity context in relevant
+                                    recommendations. No smartwatch or phone connection is
+                                    required.
                                 </p>
 
                                 <button
@@ -109,7 +103,11 @@ export default function WearableTrackerPage() {
 
                             <div className="hidden h-44 w-44 place-items-center rounded-full bg-[#EBEEE5] md:grid">
                                 <div className="grid h-32 w-32 place-items-center rounded-full border border-[#344C3D]/15 bg-white">
-                                    <Activity size={56} strokeWidth={1.4} className="text-[#81947B]" />
+                                    <Activity
+                                        size={56}
+                                        strokeWidth={1.4}
+                                        className="text-[#81947B]"
+                                    />
                                 </div>
                             </div>
                         </div>
@@ -117,15 +115,20 @@ export default function WearableTrackerPage() {
                 ) : (
                     <>
                         <div className="mt-6 flex items-start gap-3 rounded-2xl border border-[#A87945]/20 bg-[#F4EADD]/50 p-4">
-                            <Info size={19} className="mt-0.5 shrink-0 text-[#A87945]" />
+                            <Info
+                                size={19}
+                                className="mt-0.5 shrink-0 text-[#A87945]"
+                            />
+
                             <div>
                                 <p className="text-sm font-semibold text-[#344C3D]">
                                     Demo mode — no device connected
                                 </p>
+
                                 <p className="mt-1 text-xs leading-5 text-[#77796F]">
-                                    These are sample readings for demonstration only. They are
-                                    not measured from a person or smartwatch and must not be
-                                    used for medical decisions.
+                                    These readings are simulated examples, not actual
+                                    measurements from you or a smartwatch. Recommendations
+                                    using them are demonstrations, not medical advice.
                                 </p>
                             </div>
                         </div>
@@ -133,31 +136,34 @@ export default function WearableTrackerPage() {
                         <div className="mt-6 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
                             <MetricCard
                                 title="Heart rate"
-                                value="74"
+                                value={String(data.heartRateBpm)}
                                 unit="BPM"
                                 detail="Illustrative reading"
                                 icon={<HeartPulse size={21} />}
                                 iconStyle="bg-rose-50 text-rose-600"
                             />
+
                             <MetricCard
                                 title="Daily steps"
-                                value="6,842"
+                                value={data.steps.toLocaleString()}
                                 unit="steps"
-                                detail="68% of 10,000-step goal"
+                                detail={`${stepProgress}% of ${data.dailyStepGoal.toLocaleString()}-step goal`}
                                 icon={<Footprints size={21} />}
                                 iconStyle="bg-blue-50 text-blue-600"
                             />
+
                             <MetricCard
                                 title="Sleep duration"
-                                value="7h 32m"
+                                value={data.sleepLabel}
                                 unit=""
                                 detail="Illustrative duration"
                                 icon={<Moon size={21} />}
                                 iconStyle="bg-violet-50 text-violet-600"
                             />
+
                             <MetricCard
                                 title="Active calories"
-                                value="386"
+                                value={String(data.activeCalories)}
                                 unit="kcal"
                                 detail="Sample activity estimate"
                                 icon={<Flame size={21} />}
@@ -172,15 +178,20 @@ export default function WearableTrackerPage() {
                                         <h2 className="font-serif text-xl font-semibold text-[#344C3D]">
                                             Weekly activity
                                         </h2>
+
                                         <p className="mt-1 text-xs text-[#77796F]">
                                             Example daily step counts
                                         </p>
                                     </div>
-                                    <CalendarDays size={21} className="text-[#81947B]" />
+
+                                    <CalendarDays
+                                        size={21}
+                                        className="text-[#81947B]"
+                                    />
                                 </div>
 
                                 <div className="mt-8 flex h-44 items-end justify-between gap-2">
-                                    {weeklyActivity.map((item) => (
+                                    {data.weeklyActivity.map((item) => (
                                         <div
                                             key={item.day}
                                             className="flex h-full flex-1 flex-col items-center justify-end gap-2"
@@ -188,6 +199,7 @@ export default function WearableTrackerPage() {
                       <span className="text-[10px] text-[#77796F] sm:text-xs">
                         {(item.steps / 1000).toFixed(1)}k
                       </span>
+
                                             <div className="flex h-32 w-full items-end justify-center">
                                                 <div
                                                     title={`${item.steps.toLocaleString()} sample steps`}
@@ -197,10 +209,14 @@ export default function WearableTrackerPage() {
                                                             : "bg-[#DCE3D5]"
                                                     }`}
                                                     style={{
-                                                        height: `${(item.steps / 10000) * 100}%`,
+                                                        height: `${Math.min(
+                                                            100,
+                                                            (item.steps / data.dailyStepGoal) * 100
+                                                        )}%`,
                                                     }}
                                                 />
                                             </div>
+
                                             <span className="text-[11px] text-[#77796F]">
                         {item.day}
                       </span>
@@ -217,17 +233,20 @@ export default function WearableTrackerPage() {
                                 <h2 className="font-serif text-xl font-semibold text-[#344C3D]">
                                     Daily activity goal
                                 </h2>
+
                                 <p className="mt-1 text-xs text-[#77796F]">
-                                    Illustrative progress toward 10,000 steps
+                                    Illustrative progress toward{" "}
+                                    {data.dailyStepGoal.toLocaleString()} steps
                                 </p>
 
                                 <div className="mt-8">
                                     <div className="flex items-end justify-between gap-2">
                     <span className="font-serif text-3xl font-semibold text-[#344C3D]">
-                      6,842
+                      {data.steps.toLocaleString()}
                     </span>
+
                                         <span className="text-sm text-[#77796F]">
-                      / 10,000 steps
+                      / {data.dailyStepGoal.toLocaleString()} steps
                     </span>
                                     </div>
 
@@ -235,18 +254,24 @@ export default function WearableTrackerPage() {
                                         className="mt-4 h-3 overflow-hidden rounded-full bg-[#EBEEE5]"
                                         role="progressbar"
                                         aria-label="Illustrative daily steps goal"
-                                        aria-valuenow={68}
+                                        aria-valuenow={stepProgress}
                                         aria-valuemin={0}
                                         aria-valuemax={100}
                                     >
                                         <div
                                             className="h-full rounded-full bg-[#81947B]"
-                                            style={{ width: "68.42%" }}
+                                            style={{
+                                                width: `${Math.min(
+                                                    100,
+                                                    (data.steps / data.dailyStepGoal) * 100
+                                                )}%`,
+                                            }}
                                         />
                                     </div>
 
                                     <p className="mt-3 text-xs text-[#77796F]">
-                                        3,158 sample steps remaining to the example goal.
+                                        {stepsRemaining.toLocaleString()} sample steps remaining
+                                        to the illustrative goal.
                                     </p>
                                 </div>
 
@@ -255,10 +280,12 @@ export default function WearableTrackerPage() {
                                         size={20}
                                         className="mt-0.5 shrink-0 text-[#81947B]"
                                     />
+
                                     <p className="text-xs leading-5 text-[#596458]">
-                                        No wearable data is collected or sent to the backend.
-                                        This demo stores only your on/off preference in this
-                                        browser.
+                                        No wearable measurements are collected or sent to the
+                                        backend. This demo stores its enable/disable preference
+                                        in this browser. The shared sample data can be used by
+                                        the frontend recommendation logic.
                                     </p>
                                 </div>
                             </div>
@@ -282,23 +309,31 @@ function MetricCard({
     value: string;
     unit: string;
     detail: string;
-    icon: React.ReactNode;
+    icon: ReactNode;
     iconStyle: string;
 }) {
     return (
         <div className="rounded-2xl border border-[#344C3D]/10 bg-white p-5 shadow-sm">
             <div className="flex items-center justify-between gap-2">
                 <p className="text-sm text-[#77796F]">{title}</p>
-                <div className={`grid h-10 w-10 place-items-center rounded-xl ${iconStyle}`}>
+
+                <div
+                    className={`grid h-10 w-10 place-items-center rounded-xl ${iconStyle}`}
+                >
                     {icon}
                 </div>
             </div>
+
             <div className="mt-5 flex flex-wrap items-baseline gap-2">
         <span className="font-serif text-3xl font-semibold text-[#344C3D]">
           {value}
         </span>
-                {unit && <span className="text-xs text-[#77796F]">{unit}</span>}
+
+                {unit && (
+                    <span className="text-xs text-[#77796F]">{unit}</span>
+                )}
             </div>
+
             <p className="mt-2 text-xs text-[#77796F]">{detail}</p>
         </div>
     );
