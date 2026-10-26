@@ -1,0 +1,99 @@
+{
+  "sample_profile": {
+    "diabetes": {
+      "bmi": 26.0,
+      "predicted_class_match": true,
+      "max_abs_probability_diff_pct_points": 0.0,
+      "max_abs_impact_diff": 0.0,
+      "same_top5_order": true
+    },
+    "heart": {
+      "bmi": 26.0,
+      "predicted_class_match": true,
+      "max_abs_probability_diff_pct_points": 0.0,
+      "max_abs_impact_diff": 0.0,
+      "same_top5_order": true
+    }
+  },
+  "saved_vs_retrained": {
+    "diabetes": {
+      "prediction_agreement": 1.0,
+      "max_abs_proba_diff": 3.3306690738754696e-16,
+      "saved_model_test_accuracy": 0.669
+    },
+    "heart": {
+      "prediction_agreement": 1.0,
+      "max_abs_proba_diff": 2.220446049250313e-16,
+      "saved_model_test_accuracy": 0.725
+    }
+  },
+  "additivity": {
+    "diabetes": {
+      "rows": 300,
+      "max_abs_error": 7.882583474838611e-15,
+      "mean_abs_error": 2.0924003270768785e-15
+    },
+    "heart": {
+      "rows": 300,
+      "max_abs_error": 1.2545520178264269e-14,
+      "mean_abs_error": 3.647822784576723e-15
+    }
+  },
+  "rule_alignment": {
+    "diabetes": {
+      "features": [
+        "age",
+        "bmi",
+        "activity",
+        "sleep_hours",
+        "family_diabetes"
+      ],
+      "mean_abs_shap": [
+        0.11253491039839439,
+        0.09306614316323229,
+        0.07947887080092726,
+        0.08140097561785446,
+        0.17280190455517835
+      ],
+      "oracle_permutation_importance": [
+        0.06483333333333334,
+        0.06416666666666668,
+        0.053000000000000026,
+        0.0625,
+        0.217
+      ],
+      "spearman_rho": 0.9999999999999999,
+      "p": 1.4042654220543608e-24,
+      "n_features": 5
+    },
+    "heart": {
+      "features": [
+        "age",
+        "bmi",
+        "activity",
+        "sleep_hours",
+        "stress",
+        "family_heart"
+      ],
+      "mean_abs_shap": [
+        0.08729931676267925,
+        0.08479516268414956,
+        0.05933974826091179,
+        0.06692734016248898,
+        0.16941101690480678,
+        0.16207110025126478
+      ],
+      "oracle_permutation_importance": [
+        0.03599999999999996,
+        0.02699999999999995,
+        0.03816666666666663,
+        0.023833333333333283,
+        0.17283333333333326,
+        0.15133333333333326
+      ],
+      "spearman_rho": 0.6571428571428573,
+      "p": 0.1561749271137024,
+      "n_features": 6
+    }
+  }
+}

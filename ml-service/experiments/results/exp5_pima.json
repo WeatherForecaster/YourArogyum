@@ -1,0 +1,270 @@
+{
+  "source": "https://raw.githubusercontent.com/plotly/datasets/master/diabetes.csv",
+  "sha256": "698c203a14aa31941d2251175330c9199f3ccdb31597abbba2a3e35416257a72",
+  "n": 768,
+  "positives": 268,
+  "prevalence": 0.3489583333333333,
+  "zero_values_treated_as_missing": {
+    "Glucose": 5,
+    "BloodPressure": 35,
+    "SkinThickness": 227,
+    "Insulin": 374,
+    "BMI": 11
+  },
+  "imputation": "median, fitted inside each training fold (no leakage)",
+  "cv": {
+    "A_overlap_age_bmi": {
+      "logistic_regression": {
+        "auc": {
+          "mean": 0.7344249301187982,
+          "sd": 0.03544249663278866
+        },
+        "accuracy": {
+          "mean": 0.6565126050420167,
+          "sd": 0.03551345101104672
+        },
+        "f1_pos": {
+          "mean": 0.5696552588135136,
+          "sd": 0.041994604098053626
+        },
+        "bal_acc": {
+          "mean": 0.6554908106219426,
+          "sd": 0.03603490578918134
+        }
+      },
+      "random_forest": {
+        "auc": {
+          "mean": 0.727027183787561,
+          "sd": 0.03536972526774503
+        },
+        "accuracy": {
+          "mean": 0.6712286732874968,
+          "sd": 0.03139273686259337
+        },
+        "f1_pos": {
+          "mean": 0.5841954807208031,
+          "sd": 0.036325811610402325
+        },
+        "bal_acc": {
+          "mean": 0.6692528651292803,
+          "sd": 0.03101233242140703
+        }
+      },
+      "majority_class": {
+        "auc": {
+          "mean": 0.5,
+          "sd": 0.0
+        },
+        "accuracy": {
+          "mean": 0.6510482981071217,
+          "sd": 0.0020896611659338453
+        },
+        "f1_pos": {
+          "mean": 0.0,
+          "sd": 0.0
+        },
+        "bal_acc": {
+          "mean": 0.5,
+          "sd": 0.0
+        }
+      },
+      "rf_minus_lr_auc": {
+        "mean_diff": -0.007397746331236895,
+        "nadeau_bengio_t": -0.5171926642922502,
+        "p": 0.6061752885168183,
+        "folds": 100
+      }
+    },
+    "B_age_bmi_pedigree": {
+      "logistic_regression": {
+        "auc": {
+          "mean": 0.7479048218029348,
+          "sd": 0.03590934079654269
+        },
+        "accuracy": {
+          "mean": 0.6867205670146846,
+          "sd": 0.03399811420688467
+        },
+        "f1_pos": {
+          "mean": 0.6077186385131732,
+          "sd": 0.041053658029388845
+        },
+        "bal_acc": {
+          "mean": 0.6889407407407409,
+          "sd": 0.03511400911753833
+        }
+      },
+      "random_forest": {
+        "auc": {
+          "mean": 0.7565504192872115,
+          "sd": 0.03802949594121858
+        },
+        "accuracy": {
+          "mean": 0.6911285120108651,
+          "sd": 0.03730406301207445
+        },
+        "f1_pos": {
+          "mean": 0.5892484138963026,
+          "sd": 0.04858956609970404
+        },
+        "bal_acc": {
+          "mean": 0.6782909154437456,
+          "sd": 0.03900177255302855
+        }
+      },
+      "majority_class": {
+        "auc": {
+          "mean": 0.5,
+          "sd": 0.0
+        },
+        "accuracy": {
+          "mean": 0.6510482981071217,
+          "sd": 0.0020896611659338453
+        },
+        "f1_pos": {
+          "mean": 0.0,
+          "sd": 0.0
+        },
+        "bal_acc": {
+          "mean": 0.5,
+          "sd": 0.0
+        }
+      },
+      "rf_minus_lr_auc": {
+        "mean_diff": 0.008645597484276731,
+        "nadeau_bengio_t": 0.6022748296369151,
+        "p": 0.5483681951295318,
+        "folds": 100
+      }
+    },
+    "C_all_clinical_reference": {
+      "logistic_regression": {
+        "auc": {
+          "mean": 0.8370104472396924,
+          "sd": 0.0267545710896068
+        },
+        "accuracy": {
+          "mean": 0.7559103641456584,
+          "sd": 0.030504365309188756
+        },
+        "f1_pos": {
+          "mean": 0.6727955451526745,
+          "sd": 0.04133920359819161
+        },
+        "bal_acc": {
+          "mean": 0.7476264500349405,
+          "sd": 0.03291302427428486
+        }
+      },
+      "random_forest": {
+        "auc": {
+          "mean": 0.8375703354297696,
+          "sd": 0.02832553124792882
+        },
+        "accuracy": {
+          "mean": 0.7644915541974364,
+          "sd": 0.03067290807613708
+        },
+        "f1_pos": {
+          "mean": 0.6759697702815883,
+          "sd": 0.043410281404327816
+        },
+        "bal_acc": {
+          "mean": 0.7507900069881204,
+          "sd": 0.034029961256098654
+        }
+      },
+      "majority_class": {
+        "auc": {
+          "mean": 0.5,
+          "sd": 0.0
+        },
+        "accuracy": {
+          "mean": 0.6510482981071217,
+          "sd": 0.0020896611659338453
+        },
+        "f1_pos": {
+          "mean": 0.0,
+          "sd": 0.0
+        },
+        "bal_acc": {
+          "mean": 0.5,
+          "sd": 0.0
+        }
+      },
+      "rf_minus_lr_auc": {
+        "mean_diff": 0.0005598881900768893,
+        "nadeau_bengio_t": 0.06985728371241347,
+        "p": 0.9444481665454276,
+        "folds": 100
+      }
+    }
+  },
+  "heldout": {
+    "A_overlap_age_bmi": {
+      "logistic_regression": {
+        "auc": 0.7071296296296297,
+        "auc_ci95_bootstrap": [
+          0.6260887390670554,
+          0.7849586537398444
+        ],
+        "accuracy": 0.6103896103896104,
+        "n_test": 154
+      },
+      "random_forest": {
+        "auc": 0.7449074074074075,
+        "auc_ci95_bootstrap": [
+          0.6549968553459119,
+          0.8219300439320187
+        ],
+        "accuracy": 0.6688311688311688,
+        "n_test": 154
+      }
+    },
+    "B_age_bmi_pedigree": {
+      "logistic_regression": {
+        "auc": 0.7177777777777776,
+        "auc_ci95_bootstrap": [
+          0.6336240181305943,
+          0.7941010931458647
+        ],
+        "accuracy": 0.6558441558441559,
+        "n_test": 154
+      },
+      "random_forest": {
+        "auc": 0.7772222222222223,
+        "auc_ci95_bootstrap": [
+          0.7013813405797101,
+          0.8484735787172011
+        ],
+        "accuracy": 0.7077922077922078,
+        "n_test": 154
+      }
+    },
+    "C_all_clinical_reference": {
+      "logistic_regression": {
+        "auc": 0.8125925925925926,
+        "auc_ci95_bootstrap": [
+          0.743067106391074,
+          0.876900085842338
+        ],
+        "accuracy": 0.7337662337662337,
+        "n_test": 154
+      },
+      "random_forest": {
+        "auc": 0.8211111111111111,
+        "auc_ci95_bootstrap": [
+          0.7514712028542304,
+          0.8840813199244452
+        ],
+        "accuracy": 0.7597402597402597,
+        "n_test": 154
+      }
+    }
+  },
+  "partial_rule_check": {
+    "auc_age_bmi_points_only": 0.643699370626158,
+    "rows_used": 757,
+    "note": "Only 2 of the 5 points components exist in this dataset (age>=55: 2, BMI>=30: 2, BMI 25-30: 1). Descriptive only."
+  }
+}
