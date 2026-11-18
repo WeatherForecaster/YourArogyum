@@ -87,7 +87,7 @@ export default function ProgressPage({
   assessmentData,
   onAssessmentUpdate,
 }: ProgressPageProps) {
-  const { invalidateDashboardCache } = useDashboardCache();
+  const { invalidate: invalidateDashboardCache } = useDashboardCache();
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [sessionActivities, setSessionActivities] = useState<ActivityEntry[]>([]);
   const [target, setTarget] = useState<string>("");
