@@ -32,8 +32,8 @@ export interface SavedRecommendation {
 }
 
 export interface DietPlanStatePayload {
-  waterGlasses: number;
-  completedMeals: string[];
+  /** Per-date meal completion: keys are YYYY-MM-DD, values are completed meal names. */
+  mealsByDate: Record<string, string[]>;
   dietPlan: string;
   nutritionBreakdown: unknown | null;
   recentPlans: string[];
