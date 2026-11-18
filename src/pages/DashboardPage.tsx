@@ -19,9 +19,14 @@ import {
 import type { AssessmentData } from "../services/assessment";
 import type { HomeSection } from "../types/navigation";
 import { classifyGoalProgress } from "../utils/goalProgress";
-import { API_BASE_URL } from "../api/client";
+import { apiRequest } from "../api/client";
 import HydrationReminderCard from "../components/HydrationReminderCard";
 import { DEFAULT_WATER_TARGET_ML } from "../utils/hydrationReminder";
+import {
+  useDashboardCache,
+  getTodayDateString,
+  type DailyLogResponse,
+} from "../context/DashboardCacheContext";
 
 interface DashboardPageProps {
   assessmentData: AssessmentData | null;
@@ -29,92 +34,40 @@ interface DashboardPageProps {
   onNavigate: (page: HomeSection) => void;
 }
 
-interface MlFactor {
-  feature: string;
-  value: string | number;
-  impact: number;
+function MetricCardSkeleton() {
+  return (
+    <div className="animate-pulse rounded-2xl border border-[#344C3D]/10 bg-[#FDFCFA] p-4 sm:p-5">
+      <div className="flex items-center justify-between">
+        <div className="h-4 w-20 rounded bg-[#E8E5DD]" />
+        <div className="h-8 w-8 rounded-xl bg-[#E8E5DD]" />
+      </div>
+      <div className="mt-4 h-7 w-24 rounded bg-[#E8E5DD]" />
+      <div className="mt-2 h-3 w-32 rounded bg-[#E8E5DD]" />
+    </div>
+  );
 }
 
-interface MlRiskResult {
-  risk_level: string;
-  probabilities: Record<string, number>;
-  top_factors: MlFactor[];
-  plainExplanation?: string | null;
+function SectionCardSkeleton({ height = "h-80" }: { height?: string }) {
+  return (
+    <div
+      className={`animate-pulse rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-6 ${height}`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="space-y-2">
+          <div className="h-5 w-36 rounded bg-[#E8E5DD]" />
+          <div className="h-3 w-48 rounded bg-[#E8E5DD]" />
+        </div>
+        <div className="h-8 w-8 rounded-xl bg-[#E8E5DD]" />
+      </div>
+      <div className="mt-6 space-y-4">
+        <div className="h-4 w-full rounded bg-[#E8E5DD]" />
+        <div className="h-4 w-5/6 rounded bg-[#E8E5DD]" />
+        <div className="h-4 w-4/6 rounded bg-[#E8E5DD]" />
+        <div className="h-10 w-full rounded-xl bg-[#E8E5DD]" />
+      </div>
+    </div>
+  );
 }
-
-interface MlResult {
-  bmi: number;
-  diabetes: MlRiskResult;
-  heart: MlRiskResult;
-  model: string;
-  explainability: string;
-  data_notice: string;
-}
-
-interface DashboardData {
-  userName?: string;
-  assessmentCompleted: boolean;
-  bmi: number | null;
-  bmiCategory: string | null;
-  dailyCalories: number | null;
-  proteinTargetGrams: number | null;
-  calorieEstimateNote?: string;
-  profile: Record<string, string | null> | null;
-  mlPrediction?: {
-    available: boolean;
-    message?: string;
-    result?: MlResult;
-  };
-}
-
-interface DailyLog {
-  logDate: string;
-  logged: boolean;
-  proteinGrams: number | null;
-  waterMl: number | null;
-  sleepHours: number | null;
-  activityMinutes: number | null;
-  weightKg: number | null;
-}
-
-interface WeightRecord {
-  date: string;
-  weightKg: number;
-}
-
-
-interface GoalProgress {
-  available: boolean;
-  goal?: string;
-  startingWeightKg?: string | number | null;
-  targetWeightKg?: string | number | null;
-  currentWeightKg?: number | string | null;
-  progressPercent?: number | null;
-  remainingKg?: number | null;
-  message?: string;
-}
-
-
-const API_BASE = API_BASE_URL;
-
-const EMPTY_DASHBOARD: DashboardData = {
-  assessmentCompleted: false,
-  bmi: null,
-  bmiCategory: null,
-  dailyCalories: null,
-  proteinTargetGrams: null,
-  profile: null,
-};
-
-const EMPTY_LOG: DailyLog = {
-  logDate: "",
-  logged: false,
-  proteinGrams: null,
-  waterMl: null,
-  sleepHours: null,
-  activityMinutes: null,
-  weightKg: null,
-};
 
 function getToday(): string {
   const date = new Date();
@@ -154,16 +107,18 @@ function DashboardPage({
   assessmentCompleted,
   onNavigate,
 }: DashboardPageProps) {
-  const [dashboard, setDashboard] =
-    useState<DashboardData>(EMPTY_DASHBOARD);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-
-  const [todayLog, setTodayLog] = useState<DailyLog>(EMPTY_LOG);
-  const [weightHistory, setWeightHistory] = useState<WeightRecord[]>([]);
-  const [goalData, setGoalData] = useState<GoalProgress>({
-    available: false,
-  });
+  const {
+    dashboard,
+    todayLog,
+    weightHistory,
+    goalData,
+    loading,
+    isRevalidating,
+    error,
+    fetchDashboardData,
+    invalidateDashboardCache,
+    updateTodayLog,
+  } = useDashboardCache();
 
   const [proteinInput, setProteinInput] = useState("");
   const [waterInput, setWaterInput] = useState("");
@@ -184,119 +139,33 @@ function DashboardPage({
   // Track whether each disease card's raw SHAP table is visible.
   const [showTechnical, setShowTechnical] = useState<Record<string, boolean>>({});
 
-  const [trackingLoading, setTrackingLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [trackingError, setTrackingError] = useState("");
   const [trackingMessage, setTrackingMessage] = useState("");
 
-  async function apiRequest<T>(
-    path: string,
-    options: RequestInit = {}
-  ): Promise<T> {
-    const response = await fetch(`${API_BASE}${path}`, {
-      ...options,
-      credentials: "include",
-      headers: {
-        Accept: "application/json",
-        ...(options.body ? { "Content-Type": "application/json" } : {}),
-        ...options.headers,
-      },
-    });
-
-    if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        throw new Error("Your session may have expired. Please sign in again.");
-      }
-
-      const message = await response.text();
-      throw new Error(
-        message || `Request failed with status ${response.status}.`
-      );
-    }
-
-    return response.json() as Promise<T>;
-  }
-
-  async function loadDashboard() {
-    setLoading(true);
-    setError("");
-
-    try {
-      const data = await apiRequest<DashboardData>("/api/dashboard/me");
-      setDashboard(data);
-    } catch (err) {
-      setDashboard(EMPTY_DASHBOARD);
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Could not connect to the dashboard service."
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function loadTracking() {
-    setTrackingLoading(true);
-    setTrackingError("");
-
-    try {
-      const [daily, history, goal] = await Promise.all([
-        apiRequest<DailyLog>(
-          `/api/health-tracking/me?date=${getToday()}`
-        ),
-        apiRequest<WeightRecord[]>(
-          "/api/health-tracking/weight-history"
-        ),
-        apiRequest<GoalProgress>(
-          "/api/health-tracking/goal-progress"
-        ),
-      ]);
-
-      setTodayLog(daily);
-      setWeightHistory(
-        Array.isArray(history)
-          ? history.filter(
-              (item) =>
-                Number.isFinite(Number(item.weightKg)) &&
-                Boolean(item.date)
-            )
-          : []
-      );
-      setGoalData(goal);
-
-      setProteinInput(
-        daily.proteinGrams == null ? "" : String(daily.proteinGrams)
-      );
-      setWaterInput(
-        daily.waterMl == null ? "" : String(daily.waterMl)
-      );
-      setSleepInput(
-        daily.sleepHours == null ? "" : String(daily.sleepHours)
-      );
-      setActivityInput(
-        daily.activityMinutes == null
-          ? ""
-          : String(daily.activityMinutes)
-      );
-      setWeightInput(
-        daily.weightKg == null ? "" : String(daily.weightKg)
-      );
-    } catch (err) {
-      setTrackingError(
-        err instanceof Error
-          ? err.message
-          : "Could not load daily tracking."
-      );
-    } finally {
-      setTrackingLoading(false);
-    }
-  }
+  useEffect(() => {
+    void fetchDashboardData();
+  }, [fetchDashboardData]);
 
   useEffect(() => {
-    void loadDashboard();
-    void loadTracking();
-  }, []);
+    setProteinInput(
+      todayLog.proteinGrams == null ? "" : String(todayLog.proteinGrams)
+    );
+    setWaterInput(
+      todayLog.waterMl == null ? "" : String(todayLog.waterMl)
+    );
+    setSleepInput(
+      todayLog.sleepHours == null ? "" : String(todayLog.sleepHours)
+    );
+    setActivityInput(
+      todayLog.activityMinutes == null
+        ? ""
+        : String(todayLog.activityMinutes)
+    );
+    setWeightInput(
+      todayLog.weightKg == null ? "" : String(todayLog.weightKg)
+    );
+  }, [todayLog]);
 
   async function saveDailyTracking(
     event: React.FormEvent<HTMLFormElement>
@@ -351,17 +220,17 @@ function DashboardPage({
     }
 
     try {
-      const saved = await apiRequest<DailyLog>(
-        `/api/health-tracking/me?date=${getToday()}`,
+      const saved = await apiRequest<DailyLogResponse>(
+        `/api/health-tracking/me?date=${getTodayDateString()}`,
         {
           method: "PUT",
-          body: JSON.stringify(payload),
+          body: payload,
         }
       );
 
-      setTodayLog(saved);
+      updateTodayLog(saved);
       setTrackingMessage("Today's health log saved successfully.");
-      await loadTracking();
+      invalidateDashboardCache();
     } catch (err) {
       setTrackingError(
         err instanceof Error
@@ -456,15 +325,23 @@ function DashboardPage({
   return (
     <main className="min-h-screen bg-[#F6F2E9] px-4 py-6 text-[#30382F] sm:px-6 sm:py-8">
       <div className="mx-auto max-w-7xl space-y-7">
-        <header>
-          <h1 className="mt-2 font-serif text-3xl text-[#344C3D] sm:text-4xl">
-            Your health overview
-          </h1>
-          <p className="mt-2 text-sm text-[#77796F]">
-            {hasProfile
-              ? `Welcome back, ${dashboard.userName || "there"}.`
-              : "Your personal health dashboard"}
-          </p>
+        <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
+          <div>
+            <h1 className="mt-2 font-serif text-3xl text-[#344C3D] sm:text-4xl">
+              Your health overview
+            </h1>
+            <p className="mt-2 text-sm text-[#77796F]">
+              {hasProfile
+                ? `Welcome back, ${dashboard.userName || "there"}.`
+                : "Your personal health dashboard"}
+            </p>
+          </div>
+          {isRevalidating && (
+            <div className="flex items-center gap-1.5 self-start rounded-full border border-[#D7DCCF] bg-white/70 px-3 py-1 text-xs text-[#77796F] sm:self-auto">
+              <RefreshCw size={12} className="animate-spin text-[#71836A]" />
+              <span>Updating in background...</span>
+            </div>
+          )}
         </header>
 
         {!loading && !error && !hasCompletedAssessment && (
@@ -501,7 +378,7 @@ function DashboardPage({
             <p>{error}</p>
             <button
               type="button"
-              onClick={() => void loadDashboard()}
+              onClick={() => void fetchDashboardData(true)}
               className="inline-flex items-center gap-2 self-start font-medium text-[#344C3D]"
             >
               <RefreshCw size={15} />
@@ -510,67 +387,72 @@ function DashboardPage({
           </div>
         )}
 
-        {loading && (
-          <p role="status" className="text-sm text-[#77796F]">
-            Loading your health data...
-          </p>
-        )}
-
         <section>
-          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-            <MetricCard
-              icon={Scale}
-              title="BMI"
-              value={bmi === null ? "N/A" : bmi.toFixed(1)}
-              detail={bmiCategory}
-            />
-            <MetricCard
-              icon={Flame}
-              title="Daily calories"
-              value={
-                dashboard.dailyCalories != null
-                  ? `${dashboard.dailyCalories.toLocaleString()} kcal`
-                  : "Unavailable"
-              }
-              detail={
-                dashboard.calorieEstimateNote ??
-                "Estimated daily energy needs"
-              }
-            />
-            <MetricCard
-              icon={Activity}
-              title="Protein reference"
-              value={
-                proteinTarget != null
-                  ? `${proteinTarget} g/day`
-                  : "Unavailable"
-              }
-              detail="General reference, not actual intake"
-            />
-            <MetricCard
-              icon={Target}
-              title="Goal progress"
-              value={
-                goalClassification.state === "unavailable"
-                  ? "Not calculated"
-                  : goalClassification.state === "exceeded"
-                  ? "Target exceeded"
-                  : goalClassification.state === "reached"
-                  ? "Target reached!"
-                  : `${Math.round(goalClassification.clampedPercent)}%`
-              }
-              detail={
-                goalClassification.state === "unavailable"
-                  ? "Log your weight to calculate progress"
-                  : goalClassification.detailText
-              }
-              action={() => onNavigate("progress")}
-            />
-          </div>
-          <p className="mt-3 text-xs leading-5 text-[#77796F]">
-            BMI uses adult reference ranges. Calorie and protein values are
-            estimates, not medical prescriptions.
-          </p>
+          {loading ? (
+            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+              <MetricCardSkeleton />
+              <MetricCardSkeleton />
+              <MetricCardSkeleton />
+              <MetricCardSkeleton />
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                <MetricCard
+                  icon={Scale}
+                  title="BMI"
+                  value={bmi === null ? "N/A" : bmi.toFixed(1)}
+                  detail={bmiCategory}
+                />
+                <MetricCard
+                  icon={Flame}
+                  title="Daily calories"
+                  value={
+                    dashboard.dailyCalories != null
+                      ? `${dashboard.dailyCalories.toLocaleString()} kcal`
+                      : "Unavailable"
+                  }
+                  detail={
+                    dashboard.calorieEstimateNote ??
+                    "Estimated daily energy needs"
+                  }
+                />
+                <MetricCard
+                  icon={Activity}
+                  title="Protein reference"
+                  value={
+                    proteinTarget != null
+                      ? `${proteinTarget} g/day`
+                      : "Unavailable"
+                  }
+                  detail="General reference, not actual intake"
+                />
+                <MetricCard
+                  icon={Target}
+                  title="Goal progress"
+                  value={
+                    goalClassification.state === "unavailable"
+                      ? "Not calculated"
+                      : goalClassification.state === "exceeded"
+                      ? "Target exceeded"
+                      : goalClassification.state === "reached"
+                      ? "Target reached!"
+                      : `${Math.round(goalClassification.clampedPercent)}%`
+                  }
+                  detail={
+                    goalClassification.state === "unavailable"
+                      ? "Log your weight to calculate progress"
+                      : goalClassification.detailText
+                  }
+                  action={() => onNavigate("progress")}
+                />
+              </div>
+              <p className="mt-3 text-xs leading-5 text-[#77796F]">
+                BMI uses adult reference ranges. Calorie and protein values are
+                estimates, not medical prescriptions.
+              </p>
+            </>
+          )}
         </section>
 
         <section>
@@ -579,7 +461,13 @@ function DashboardPage({
             subtitle="Record today's intake and habits. Your entries are saved to your account."
           />
 
-          <div className="mt-5 grid items-stretch gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+          {loading ? (
+            <div className="mt-5 grid items-stretch gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+              <SectionCardSkeleton height="h-[520px]" />
+              <SectionCardSkeleton height="h-[520px]" />
+            </div>
+          ) : (
+            <div className="mt-5 grid items-stretch gap-5 lg:grid-cols-[1.15fr_0.85fr]">
             <article className="rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-5 shadow-[0_8px_30px_rgba(52,76,61,0.04)] sm:p-7">
               <CardHeading
                 icon={CalendarDays}
@@ -666,7 +554,7 @@ function DashboardPage({
 
                 <button
                   type="submit"
-                  disabled={saving || trackingLoading}
+                  disabled={saving || loading}
                   className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#344C3D] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#283D31] disabled:cursor-not-allowed disabled:opacity-60"
                 >
                   <Save size={16} />
@@ -741,52 +629,45 @@ function DashboardPage({
                   subtitle="Your saved daily habits"
                 />
 
-                {trackingLoading ? (
-                  <p className="mt-4 text-sm text-[#77796F]">
-                    Loading your daily log...
-                  </p>
-                ) : (
-                  <div className="mt-4 space-y-3">
-                    <InfoRow
-                      label="Water"
-                      value={
-                        todayLog.waterMl == null
-                          ? "Not logged"
-                          : `${todayLog.waterMl} ml`
-                      }
-                    />
-                    <InfoRow
-                      label="Sleep"
-                      value={
-                        todayLog.sleepHours == null
-                          ? "Not logged"
-                          : `${todayLog.sleepHours} hours`
-                      }
-                    />
-                    <InfoRow
-                      label="Physical activity"
-                      value={
-                        todayLog.activityMinutes == null
-                          ? "Not logged"
-                          : `${todayLog.activityMinutes} minutes`
-                      }
-                    />
-                    <InfoRow
-                      label="Today's weight"
-                      value={
-                        todayLog.weightKg == null
-                          ? "Not logged"
-                          : `${todayLog.weightKg} kg`
-                      }
-                    />
-                  </div>
-                )}
+                <div className="mt-4 space-y-3">
+                  <InfoRow
+                    label="Water"
+                    value={
+                      todayLog.waterMl == null
+                        ? "Not logged"
+                        : `${todayLog.waterMl} ml`
+                    }
+                  />
+                  <InfoRow
+                    label="Sleep"
+                    value={
+                      todayLog.sleepHours == null
+                        ? "Not logged"
+                        : `${todayLog.sleepHours} hours`
+                    }
+                  />
+                  <InfoRow
+                    label="Physical activity"
+                    value={
+                      todayLog.activityMinutes == null
+                        ? "Not logged"
+                        : `${todayLog.activityMinutes} minutes`
+                    }
+                  />
+                  <InfoRow
+                    label="Today's weight"
+                    value={
+                      todayLog.weightKg == null
+                        ? "Not logged"
+                        : `${todayLog.weightKg} kg`
+                    }
+                  />
+                </div>
               </article>
-
-
             </div>
           </div>
-        </section>
+        )}
+      </section>
           <div className="mt-5">
             <HydrationReminderCard
               currentWaterMl={currentWaterMl}
@@ -794,35 +675,37 @@ function DashboardPage({
               onAddWater={handleAddWater}
             />
           </div>
-        <section className="grid gap-5 lg:grid-cols-2">
-          <article className="rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-5 sm:p-6">
-            <div className="flex items-center justify-between gap-3">
-              <CardHeading
-                icon={TrendingUp}
-                title="Weight Trend"
-                subtitle="A quick view of your saved measurements"
-              />
-              <button
-                type="button"
-                onClick={() => onNavigate("progress")}
-                className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-[#344C3D]"
-              >
-                History <ArrowRight size={14} />
-              </button>
-            </div>
-
-            {trackingLoading ? (
-              <p className="mt-5 text-sm text-[#77796F]">
-                Loading weight history...
-              </p>
-            ) : weightHistory.length === 0 ? (
-              <div className="mt-5 rounded-xl bg-[#F1F0E8] p-4">
-                <p className="text-sm leading-6 text-[#596458]">
-                  No weight records yet. Record your weight in today's log to
-                  start building your trend.
-                </p>
+        {loading ? (
+          <section className="grid gap-5 lg:grid-cols-2">
+            <SectionCardSkeleton height="h-[420px]" />
+            <SectionCardSkeleton height="h-[420px]" />
+          </section>
+        ) : (
+          <section className="grid gap-5 lg:grid-cols-2">
+            <article className="rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-5 sm:p-6">
+              <div className="flex items-center justify-between gap-3">
+                <CardHeading
+                  icon={TrendingUp}
+                  title="Weight Trend"
+                  subtitle="A quick view of your saved measurements"
+                />
+                <button
+                  type="button"
+                  onClick={() => onNavigate("progress")}
+                  className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-[#344C3D] hover:underline"
+                >
+                  View progress <ArrowRight size={14} />
+                </button>
               </div>
-            ) : (
+
+              {weightHistory.length === 0 ? (
+                <div className="mt-5 rounded-xl bg-[#F1F0E8] p-4">
+                  <p className="text-sm leading-6 text-[#596458]">
+                    No weight records yet. Record your weight in today's log to
+                    start building your trend.
+                  </p>
+                </div>
+              ) : (
               <div className="mt-5 rounded-xl bg-[#F1F0E8] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -995,16 +878,10 @@ function DashboardPage({
                 </p>
               )}
 
-              <button
-                type="button"
-                onClick={() => onNavigate("progress")}
-                className="mt-4 inline-flex items-center gap-2 text-sm font-medium text-[#344C3D]"
-              >
-                View full progress <ArrowRight size={14} />
-              </button>
-            </div>
-          </article>
-        </section>
+              </div>
+            </article>
+          </section>
+        )}
 
         <section>
           <SectionHeading
@@ -1013,11 +890,14 @@ function DashboardPage({
           />
 
           {loading ? (
-            <StatusPanel message="Checking for model results..." />
+            <div className="mt-4 grid gap-4 lg:grid-cols-2">
+              <SectionCardSkeleton height="h-64" />
+              <SectionCardSkeleton height="h-64" />
+            </div>
           ) : error ? (
             <StatusPanel
               message="Health insights could not be loaded because the dashboard request failed."
-              action={() => void loadDashboard()}
+              action={() => void fetchDashboardData(true)}
               actionLabel="Retry"
             />
           ) : !hasCompletedAssessment ? (
@@ -1176,7 +1056,7 @@ function DashboardPage({
                 dashboard.mlPrediction?.message ??
                 "No prediction is available. Check whether the ML service is running and the assessment data is valid."
               }
-              action={() => void loadDashboard()}
+              action={() => void fetchDashboardData(true)}
               actionLabel="Retry"
             />
           )}

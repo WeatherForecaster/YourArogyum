@@ -38,6 +38,7 @@ import {
   saveMyAssessment,
   type AssessmentData,
 } from "../services/assessment";
+import { useDashboardCache } from "../context/DashboardCacheContext";
 import { classifyGoalProgress } from "../utils/goalProgress";
 
 type WeightEntry = {
@@ -86,6 +87,7 @@ export default function ProgressPage({
   assessmentData,
   onAssessmentUpdate,
 }: ProgressPageProps) {
+  const { invalidateDashboardCache } = useDashboardCache();
   const [weights, setWeights] = useState<WeightEntry[]>([]);
   const [sessionActivities, setSessionActivities] = useState<ActivityEntry[]>([]);
   const [target, setTarget] = useState<string>("");
@@ -292,6 +294,7 @@ export default function ProgressPage({
     setSavingWeight(true);
     try {
       await saveDailyLog(weightDate, { weightKg: value });
+      invalidateDashboardCache();
       setNotice("Weight record saved successfully to your account.");
       setNoticeType("success");
       closeWeightForm();
@@ -375,6 +378,7 @@ export default function ProgressPage({
     setSavingActivity(true);
     try {
       await saveDailyLog(activityDate, { activityMinutes: minutes });
+      invalidateDashboardCache();
 
       const newEntry: ActivityEntry = {
         id: `${activityDate}-${Date.now()}`,
