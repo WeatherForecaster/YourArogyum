@@ -1,10 +1,10 @@
-
 package com.YourArogyum.backend.controller;
 
 import com.YourArogyum.backend.service.WorkoutProgressService;
 
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
 
 import org.springframework.format.annotation.DateTimeFormat;
@@ -30,6 +30,7 @@ public class WorkoutProgressController {
     }
 
     public record WorkoutProgressRequest(
+            @NotNull
             @Size(max = 300)
             List<
                     @NotBlank
@@ -48,7 +49,9 @@ public class WorkoutProgressController {
         return ResponseEntity.ok(
                 progressService.getDailyProgress(
                         authentication.getName(),
-                        date));
+                        date
+                )
+        );
     }
 
     @PutMapping("/me")
@@ -59,15 +62,12 @@ public class WorkoutProgressController {
             LocalDate date,
             @Valid @RequestBody WorkoutProgressRequest request) {
 
-        if (request == null || request.completedExercises() == null) {
-            throw new IllegalArgumentException(
-                    "Completed exercises are required.");
-        }
-
         return ResponseEntity.ok(
                 progressService.saveDailyProgress(
                         authentication.getName(),
                         date,
-                        request.completedExercises()));
+                        request.completedExercises()
+                )
+        );
     }
 }

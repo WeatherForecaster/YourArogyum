@@ -1,4 +1,3 @@
-
 package com.YourArogyum.backend.entity;
 
 import jakarta.persistence.*;
@@ -8,10 +7,12 @@ import java.time.LocalDateTime;
 @Entity
 @Table(
         name = "workout_progress",
-        uniqueConstraints = @UniqueConstraint(
-                name = "uk_workout_progress_user_date",
-                columnNames = {"user_id", "log_date"}
-        )
+        uniqueConstraints = {
+                @UniqueConstraint(
+                        name = "uk_workout_progress_user_date",
+                        columnNames = {"user_id", "log_date"}
+                )
+        }
 )
 public class WorkoutProgress {
 
@@ -33,25 +34,32 @@ public class WorkoutProgress {
     )
     private String completedExercisesJson = "[]";
 
-    @Column(name = "created_at", nullable = false)
+    @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
 
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt;
 
-    // Public constructor allows the service to create new records.
-    // JPA also requires a no-argument constructor.
     public WorkoutProgress() {
+        // Required by JPA.
     }
 
     @PrePersist
     protected void onCreate() {
         LocalDateTime now = LocalDateTime.now();
-        createdAt = now;
+
+        if (createdAt == null) {
+            createdAt = now;
+        }
+
         updatedAt = now;
 
         if (logDate == null) {
             logDate = LocalDate.now();
+        }
+
+        if (completedExercisesJson == null) {
+            completedExercisesJson = "[]";
         }
     }
 

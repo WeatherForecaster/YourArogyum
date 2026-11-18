@@ -26,13 +26,15 @@ public class WorkoutProgressService {
 
     private final WorkoutProgressRepository progressRepository;
     private final UserRepository userRepository;
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper;
 
     public WorkoutProgressService(
             WorkoutProgressRepository progressRepository,
-            UserRepository userRepository) {
+            UserRepository userRepository,
+            ObjectMapper objectMapper) {
         this.progressRepository = progressRepository;
         this.userRepository = userRepository;
+        this.objectMapper = objectMapper;
     }
 
     @Transactional(readOnly = true)
@@ -41,7 +43,7 @@ public class WorkoutProgressService {
             LocalDate date) {
 
         User user = getUser(email);
-        LocalDate logDate = date == null ? LocalDate.now() : date;
+        LocalDate logDate = resolveDate(date);
 
         return progressRepository.findByUserAndLogDate(user, logDate)
                 .map(this::toResponse)
@@ -60,47 +62,22 @@ public class WorkoutProgressService {
             LocalDate date,
             List<String> completedExercises) {
 
-        if (completedExercises == null) {
-            throw new IllegalArgumentException(
-                    "Completed exercises are required.");
-        }
-
-        if (completedExercises.size() > MAX_EXERCISES) {
-            throw new IllegalArgumentException(
-                    "Too many completed exercises.");
-        }
-
-        // Trim names and remove duplicates while preserving their order.
-        LinkedHashSet<String> cleanedNames = new LinkedHashSet<>();
-
-        for (String name : completedExercises) {
-            if (name == null || name.isBlank()) {
-                throw new IllegalArgumentException(
-                        "Exercise names cannot be blank.");
-            }
-
-            String cleaned = name.trim();
-
-            if (cleaned.length() > MAX_EXERCISE_NAME_LENGTH) {
-                throw new IllegalArgumentException(
-                        "An exercise name is too long.");
-            }
-
-            cleanedNames.add(cleaned);
-        }
+        List<String> cleanedExercises =
+                cleanExercises(completedExercises);
 
         final String exercisesJson;
 
         try {
-            exercisesJson = objectMapper.writeValueAsString(
-                    new ArrayList<>(cleanedNames));
+            exercisesJson =
+                    objectMapper.writeValueAsString(cleanedExercises);
         } catch (Exception exception) {
-            throw new IllegalArgumentException(
-                    "Could not serialize workout progress.");
+            throw new IllegalStateException(
+                    "Could not serialize workout progress.",
+                    exception);
         }
 
         User user = getUser(email);
-        LocalDate logDate = date == null ? LocalDate.now() : date;
+        LocalDate logDate = resolveDate(date);
 
         WorkoutProgress progress = progressRepository
                 .findByUserAndLogDate(user, logDate)
@@ -115,8 +92,44 @@ public class WorkoutProgressService {
         return toResponse(saved);
     }
 
-    private Map<String, Object> toResponse(WorkoutProgress progress) {
-        List<String> completedExercises;
+    private List<String> cleanExercises(
+            List<String> completedExercises) {
+
+        if (completedExercises == null) {
+            throw new IllegalArgumentException(
+                    "Completed exercises are required.");
+        }
+
+        if (completedExercises.size() > MAX_EXERCISES) {
+            throw new IllegalArgumentException(
+                    "Too many completed exercises.");
+        }
+
+        LinkedHashSet<String> uniqueExercises = new LinkedHashSet<>();
+
+        for (String name : completedExercises) {
+            if (name == null || name.isBlank()) {
+                throw new IllegalArgumentException(
+                        "Exercise names cannot be blank.");
+            }
+
+            String cleaned = name.trim();
+
+            if (cleaned.length() > MAX_EXERCISE_NAME_LENGTH) {
+                throw new IllegalArgumentException(
+                        "An exercise name is too long.");
+            }
+
+            uniqueExercises.add(cleaned);
+        }
+
+        return new ArrayList<>(uniqueExercises);
+    }
+
+    private Map<String, Object> toResponse(
+            WorkoutProgress progress) {
+
+        final List<String> completedExercises;
 
         try {
             List<?> parsed = objectMapper.readValue(
@@ -127,9 +140,11 @@ public class WorkoutProgressService {
                     .filter(String.class::isInstance)
                     .map(String.class::cast)
                     .toList();
+
         } catch (Exception exception) {
             throw new IllegalStateException(
-                    "Saved workout progress could not be read.");
+                    "Saved workout progress could not be read.",
+                    exception);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -138,6 +153,10 @@ public class WorkoutProgressService {
         result.put("completedExercises", completedExercises);
 
         return result;
+    }
+
+    private LocalDate resolveDate(LocalDate date) {
+        return date != null ? date : LocalDate.now();
     }
 
     private User getUser(String email) {

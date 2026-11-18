@@ -14,7 +14,6 @@ import ProgressPage from "./pages/ProgressPage";
 import ProfilePage from "./pages/ProfilePage";
 import AppLayout from "./components/AppLayout";
 import WearableTrackerPage from "./pages/WearableTrackerPage";
-
 import { API_BASE_URL } from "./api/client";
 import {
   getMyAssessment,

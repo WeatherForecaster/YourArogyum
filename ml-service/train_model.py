@@ -7,7 +7,14 @@ import pandas as pd
 
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import classification_report
+from sklearn.metrics import (
+    accuracy_score,
+    classification_report,
+    f1_score,
+    precision_score,
+    recall_score,
+    roc_auc_score,
+)
 
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -117,8 +124,42 @@ def train_model(disease):
     model.fit(X_train, y_train)
 
     predictions = model.predict(X_test)
+    probabilities = model.predict_proba(X_test)
+
+    accuracy = accuracy_score(y_test, predictions)
+    precision_weighted = precision_score(y_test, predictions, average="weighted", zero_division=0)
+    precision_macro = precision_score(y_test, predictions, average="macro", zero_division=0)
+    recall_weighted = recall_score(y_test, predictions, average="weighted", zero_division=0)
+    recall_macro = recall_score(y_test, predictions, average="macro", zero_division=0)
+    f1_weighted = f1_score(y_test, predictions, average="weighted", zero_division=0)
+    f1_macro = f1_score(y_test, predictions, average="macro", zero_division=0)
+    roc_auc_weighted = roc_auc_score(
+        y_test,
+        probabilities,
+        multi_class="ovr",
+        average="weighted",
+        labels=model.classes_,
+    )
+    roc_auc_macro = roc_auc_score(
+        y_test,
+        probabilities,
+        multi_class="ovr",
+        average="macro",
+        labels=model.classes_,
+    )
 
     print(f"\n--- {disease.upper()} MODEL EVALUATION ---")
+    print(f"Accuracy: {accuracy:.4f}")
+    print(f"Precision: {precision_weighted:.4f}")
+    print(f"Recall: {recall_weighted:.4f}")
+    print(f"F1: {f1_weighted:.4f}")
+    print(f"ROC-AUC: {roc_auc_weighted:.4f}")
+    print("\nMacro Averages:")
+    print(f"Precision (Macro): {precision_macro:.4f}")
+    print(f"Recall (Macro): {recall_macro:.4f}")
+    print(f"F1 (Macro): {f1_macro:.4f}")
+    print(f"ROC-AUC (Macro): {roc_auc_macro:.4f}")
+    print("\nClassification Report:")
     print(classification_report(
         y_test,
         predictions,

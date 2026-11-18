@@ -457,9 +457,6 @@ function DashboardPage({
     <main className="min-h-screen bg-[#F6F2E9] px-4 py-6 text-[#30382F] sm:px-6 sm:py-8">
       <div className="mx-auto max-w-7xl space-y-7">
         <header>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-[#81947B]">
-            YOURAROGYUM / OVERVIEW
-          </p>
           <h1 className="mt-2 font-serif text-3xl text-[#344C3D] sm:text-4xl">
             Your health overview
           </h1>

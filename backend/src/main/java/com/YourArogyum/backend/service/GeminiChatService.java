@@ -43,9 +43,8 @@ public class GeminiChatService {
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
-    private static final String GEMINI_URL =
-            "https://generativelanguage.googleapis.com/v1beta/models/"
-                    + "gemini-3.5-flash-lite:generateContent";
+    private static final String GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/"
+            + "gemini-3.5-flash-lite:generateContent";
 
     public String generateReply(List<ChatRequest.Message> messages) {
         return generateReply(messages, null);
@@ -75,8 +74,7 @@ public class GeminiChatService {
         }
 
         // Retrieve relevant passages from the local health knowledge base.
-        HealthKnowledgeService.RetrievalResult retrieved =
-                knowledgeService.retrieve(latestQuestion);
+        HealthKnowledgeService.RetrievalResult retrieved = knowledgeService.retrieve(latestQuestion);
 
         List<Map<String, Object>> contents = new ArrayList<>();
 
@@ -91,8 +89,7 @@ public class GeminiChatService {
             String role = "assistant".equalsIgnoreCase(message.role()) ? "model" : "user";
             contents.add(Map.of(
                     "role", role,
-                    "parts", List.of(Map.of("text", message.content()))
-            ));
+                    "parts", List.of(Map.of("text", message.content()))));
         }
 
         if (contents.isEmpty()) {
@@ -126,8 +123,8 @@ public class GeminiChatService {
                 """
                 + profileBlock
                 + (retrieved.context().isBlank()
-                ? ""
-                : "\n\nRetrieved health reference passages:\n" + retrieved.context());
+                        ? ""
+                        : "\n\nRetrieved health reference passages:\n" + retrieved.context());
 
         Map<String, Object> requestBody = Map.of(
                 "systemInstruction",
@@ -135,9 +132,7 @@ public class GeminiChatService {
                 "contents", contents,
                 "generationConfig", Map.of(
                         "maxOutputTokens", 2500,
-                        "thinkingConfig", Map.of("thinkingLevel", "low")
-                )
-        );
+                        "thinkingConfig", Map.of("thinkingLevel", "low")));
 
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
@@ -190,7 +185,8 @@ public class GeminiChatService {
     }
 
     /**
-     * Sends the Gemini request and retries only likely temporary provider/network failures.
+     * Sends the Gemini request and retries only likely temporary provider/network
+     * failures.
      * Permanent HTTP errors (for example, an invalid API key) are not retried.
      */
     private String executeGeminiRequestWithRetry(
@@ -205,8 +201,7 @@ public class GeminiChatService {
                         GEMINI_URL,
                         HttpMethod.POST,
                         entity,
-                        String.class
-                ).getBody();
+                        String.class).getBody();
 
             } catch (RestClientResponseException e) {
                 int status = e.getStatusCode().value();
@@ -232,18 +227,21 @@ public class GeminiChatService {
                 if (isRetryableStatus(status)) {
                     throw new IllegalStateException(
                             "The AI service is temporarily busy or unavailable. "
-                                    + "Please try again in a moment.", e);
+                                    + "Please try again in a moment.",
+                            e);
                 }
 
                 if (status == 401 || status == 403) {
                     throw new IllegalStateException(
                             "The AI service authentication or permissions check failed. "
-                                    + "Please check the server-side Gemini configuration.", e);
+                                    + "Please check the server-side Gemini configuration.",
+                            e);
                 }
 
                 throw new IllegalStateException(
                         "The AI service could not process your request (HTTP " + status
-                                + "). Please try again later.", e);
+                                + "). Please try again later.",
+                        e);
 
             } catch (ResourceAccessException e) {
                 System.err.println("Gemini connection/timeout error on attempt "
@@ -257,7 +255,8 @@ public class GeminiChatService {
 
                 throw new IllegalStateException(
                         "The AI service did not respond after several attempts. "
-                                + "Please try again.", e);
+                                + "Please try again.",
+                        e);
             }
         }
 
@@ -330,7 +329,8 @@ public class GeminiChatService {
             return false;
         }
         String lower = str.trim().toLowerCase();
-        return !lower.equals("none") && !lower.equals("nil") && !lower.equals("n/a") && !lower.equals("no") && !lower.equals("healthy");
+        return !lower.equals("none") && !lower.equals("nil") && !lower.equals("n/a") && !lower.equals("no")
+                && !lower.equals("healthy");
     }
 
     private static String combineAllergies(String general, String food) {
