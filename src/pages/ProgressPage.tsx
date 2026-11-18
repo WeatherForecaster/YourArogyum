@@ -143,13 +143,13 @@ export default function ProgressPage({
 
       const mappedWeights: WeightEntry[] = Array.isArray(history)
         ? history
-            .filter((h) => h && h.date && Number.isFinite(Number(h.weightKg)))
-            .map((h) => ({
-              id: h.date,
-              date: h.date,
-              weight: Number(h.weightKg),
-            }))
-            .sort((a, b) => a.date.localeCompare(b.date))
+          .filter((h) => h && h.date && Number.isFinite(Number(h.weightKg)))
+          .map((h) => ({
+            id: h.date,
+            date: h.date,
+            weight: Number(h.weightKg),
+          }))
+          .sort((a, b) => a.date.localeCompare(b.date))
         : [];
 
       setWeights(mappedWeights);
@@ -456,13 +456,12 @@ export default function ProgressPage({
         {notice && (
           <div
             role={noticeType === "error" ? "alert" : "status"}
-            className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${
-              noticeType === "error"
+            className={`flex items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm ${noticeType === "error"
                 ? "border-red-200 bg-red-50 text-red-700"
                 : noticeType === "success"
-                ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                : "border-blue-200 bg-blue-50 text-blue-800"
-            }`}
+                  ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                  : "border-blue-200 bg-blue-50 text-blue-800"
+              }`}
           >
             <span>{notice}</span>
             <button
@@ -542,17 +541,17 @@ export default function ProgressPage({
               goalClassification.state === "unavailable"
                 ? "Not available"
                 : goalClassification.state === "exceeded"
-                ? "Target exceeded"
-                : goalClassification.state === "reached"
-                ? "Target reached!"
-                : `${Math.round(goalClassification.clampedPercent)}%`
+                  ? "Target exceeded"
+                  : goalClassification.state === "reached"
+                    ? "Target reached!"
+                    : `${Math.round(goalClassification.clampedPercent)}%`
             }
             detail={
               !validTarget
                 ? "No target weight set"
                 : goalClassification.state === "unavailable"
-                ? "Add a valid starting and current weight"
-                : goalClassification.detailText
+                  ? "Add a valid starting and current weight"
+                  : goalClassification.detailText
             }
           />
 
@@ -770,27 +769,27 @@ export default function ProgressPage({
                     {goalClassification.state === "exceeded"
                       ? "Target exceeded"
                       : goalClassification.state === "reached"
-                      ? "Target reached"
-                      : goalClassification.state === "moving-away"
-                      ? "Moving away from target"
-                      : "Progress toward target"}
+                        ? "Target reached"
+                        : goalClassification.state === "moving-away"
+                          ? "Moving away from target"
+                          : "Progress toward target"}
                   </span>
                   <strong
                     className={
                       goalClassification.state === "exceeded"
                         ? "text-amber-600"
                         : goalClassification.state === "reached"
-                        ? "text-emerald-600"
-                        : goalClassification.state === "moving-away"
-                        ? "text-red-500"
-                        : undefined
+                          ? "text-emerald-600"
+                          : goalClassification.state === "moving-away"
+                            ? "text-red-500"
+                            : undefined
                     }
                   >
                     {goalClassification.state === "exceeded"
                       ? "Exceeded"
                       : goalClassification.state === "reached"
-                      ? "100%"
-                      : `${Math.round(goalClassification.clampedPercent)}%`}
+                        ? "100%"
+                        : `${Math.round(goalClassification.clampedPercent)}%`}
                   </strong>
                 </div>
 
@@ -803,15 +802,14 @@ export default function ProgressPage({
                   aria-label="Goal progress"
                 >
                   <div
-                    className={`h-full rounded-full transition-all ${
-                      goalClassification.state === "exceeded"
+                    className={`h-full rounded-full transition-all ${goalClassification.state === "exceeded"
                         ? "bg-amber-400"
                         : goalClassification.state === "reached"
-                        ? "bg-emerald-500"
-                        : goalClassification.state === "moving-away"
-                        ? "bg-red-400"
-                        : "bg-[#779576]"
-                    }`}
+                          ? "bg-emerald-500"
+                          : goalClassification.state === "moving-away"
+                            ? "bg-red-400"
+                            : "bg-[#779576]"
+                      }`}
                     style={{ width: `${goalClassification.clampedPercent}%` }}
                   />
                 </div>
