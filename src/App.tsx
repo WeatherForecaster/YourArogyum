@@ -1,6 +1,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import { DashboardCacheProvider, useDashboardCache } from "./context/DashboardCacheContext";
 import LandingPage from "./pages/LandingPage";
 import LoginPage from "./pages/LoginPage";
 import RegisterPage from "./pages/RegisterPage";
@@ -21,7 +22,6 @@ import {
 } from "./services/assessment";
 import { archiveAndClearLegacyStorage } from "./services/healthTracking";
 import { setWearableDemoEnabled } from "./services/wearableDemo";
-import { useDashboardCache } from "./context/DashboardCacheContext";
 
 type ModalType = "login" | "register" | null;
 type WellnessMode = "manual" | "tracker";
@@ -46,6 +46,7 @@ function readStoredWellnessMode(): WellnessMode | null {
 }
 
 function App() {
+  const { prefetch: prefetchDashboard } = useDashboardCache();
   const [activeModal, setActiveModal] = useState<ModalType>(null);
   const [currentPage, setCurrentPage] = useState<AppPage>("landing");
 
@@ -59,12 +60,6 @@ function App() {
 
   const [wellnessMode, setWellnessMode] =
       useState<WellnessMode | null>(() => readStoredWellnessMode());
-
-  const {
-    prefetchDashboardData,
-    invalidateDashboardCache,
-    resetDashboardCache,
-  } = useDashboardCache();
 
   const loadAssessment = useCallback(async () => {
     const response = await getMyAssessment();
@@ -148,10 +143,6 @@ function App() {
 
           setAssessmentCompleted(completed);
 
-          if (completed) {
-            void prefetchDashboardData().catch(() => undefined);
-          }
-
           // Ask for a mode the first time. Otherwise restore the
           // existing assessment/dashboard flow.
           if (!wellnessMode) {
@@ -187,14 +178,10 @@ function App() {
     setActiveModal(null);
 
     try {
-      // Fire assessment loading and dashboard prefetching in parallel
-      const [assessment] = await Promise.all([
-        loadAssessment(),
-        prefetchDashboardData().catch((err) => {
-          console.warn("Dashboard prefetch failed:", err);
-          return undefined;
-        }),
-      ]);
+      const assessment = await loadAssessment();
+
+      // Warm the dashboard cache immediately after login.
+      prefetchDashboard();
 
       if (!wellnessMode) {
         setCurrentPage("mode-selection");
@@ -213,7 +200,7 @@ function App() {
 
       setCurrentPage("assessment");
     }
-  }, [loadAssessment, prefetchDashboardData, wellnessMode]);
+  }, [loadAssessment, wellnessMode]);
 
   const handleRegistrationSuccess = () => {
     sessionStorage.removeItem("yourarogyum:diet-plan:v1");
@@ -239,9 +226,8 @@ function App() {
     setIsEditingAssessment(false);
     setPageError("");
 
-    // Refresh the saved assessment from the backend and invalidate dashboard cache.
+    // Refresh the saved assessment from the backend.
     void loadAssessment();
-    invalidateDashboardCache();
 
     setCurrentPage(wasEditing ? "profile" : "dashboard");
   };
@@ -297,7 +283,6 @@ function App() {
     // as a browser preference so it does not need to be selected again.
     archiveAndClearLegacyStorage();
     sessionStorage.removeItem("yourarogyum:diet-plan:v1");
-    resetDashboardCache();
 
     setAssessmentData(null);
     setAssessmentCompleted(false);
@@ -456,10 +441,9 @@ function App() {
               {currentPage === "progress" && (
                   <ProgressPage
                       assessmentData={assessmentData}
-                      onAssessmentUpdate={(updated: AssessmentData) => {
-                          setAssessmentData(updated);
-                          invalidateDashboardCache();
-                      }}
+                      onAssessmentUpdate={(updated: AssessmentData) =>
+                          setAssessmentData(updated)
+                      }
                   />
               )}
 
@@ -541,4 +525,12 @@ function App() {
   );
 }
 
-export default App;
+function WrappedApp() {
+  return (
+    <DashboardCacheProvider>
+      <App />
+    </DashboardCacheProvider>
+  );
+}
+
+export default WrappedApp;

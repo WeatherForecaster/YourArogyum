@@ -19,13 +19,18 @@ import {
 import type { AssessmentData } from "../services/assessment";
 import type { HomeSection } from "../types/navigation";
 import { classifyGoalProgress } from "../utils/goalProgress";
-import { apiRequest } from "../api/client";
+import { API_BASE_URL } from "../api/client";
 import HydrationReminderCard from "../components/HydrationReminderCard";
 import { DEFAULT_WATER_TARGET_ML } from "../utils/hydrationReminder";
 import {
   useDashboardCache,
-  getTodayDateString,
-  type DailyLogResponse,
+  type DailyLog,
+  type DashboardData,
+  type GoalProgress,
+  type WeightRecord,
+  EMPTY_DASHBOARD,
+  EMPTY_LOG,
+  getToday,
 } from "../context/DashboardCacheContext";
 
 interface DashboardPageProps {
@@ -34,52 +39,10 @@ interface DashboardPageProps {
   onNavigate: (page: HomeSection) => void;
 }
 
-function MetricCardSkeleton() {
-  return (
-    <div className="animate-pulse rounded-2xl border border-[#344C3D]/10 bg-[#FDFCFA] p-4 sm:p-5">
-      <div className="flex items-center justify-between">
-        <div className="h-4 w-20 rounded bg-[#E8E5DD]" />
-        <div className="h-8 w-8 rounded-xl bg-[#E8E5DD]" />
-      </div>
-      <div className="mt-4 h-7 w-24 rounded bg-[#E8E5DD]" />
-      <div className="mt-2 h-3 w-32 rounded bg-[#E8E5DD]" />
-    </div>
-  );
-}
-
-function SectionCardSkeleton({ height = "h-80" }: { height?: string }) {
-  return (
-    <div
-      className={`animate-pulse rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-6 ${height}`}
-    >
-      <div className="flex items-center justify-between">
-        <div className="space-y-2">
-          <div className="h-5 w-36 rounded bg-[#E8E5DD]" />
-          <div className="h-3 w-48 rounded bg-[#E8E5DD]" />
-        </div>
-        <div className="h-8 w-8 rounded-xl bg-[#E8E5DD]" />
-      </div>
-      <div className="mt-6 space-y-4">
-        <div className="h-4 w-full rounded bg-[#E8E5DD]" />
-        <div className="h-4 w-5/6 rounded bg-[#E8E5DD]" />
-        <div className="h-4 w-4/6 rounded bg-[#E8E5DD]" />
-        <div className="h-10 w-full rounded-xl bg-[#E8E5DD]" />
-      </div>
-    </div>
-  );
-}
-
-function getToday(): string {
-  const date = new Date();
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+const API_BASE = API_BASE_URL;
 
 function formatDate(date: string): string {
   if (!date) return "Unknown date";
-
   return new Date(`${date}T00:00:00`).toLocaleDateString("en-IN", {
     day: "numeric",
     month: "short",
@@ -97,7 +60,6 @@ function numericValue(
   value: string | number | null | undefined
 ): number | null {
   if (value === null || value === undefined || value === "") return null;
-
   const number = Number(value);
   return Number.isFinite(number) ? number : null;
 }
@@ -107,29 +69,42 @@ function DashboardPage({
   assessmentCompleted,
   onNavigate,
 }: DashboardPageProps) {
-  const {
-    dashboard,
-    todayLog,
-    weightHistory,
-    goalData,
-    loading,
-    isRevalidating,
-    error,
-    fetchDashboardData,
-    invalidateDashboardCache,
-    updateTodayLog,
-  } = useDashboardCache();
+  const { snapshot, loading, error, reload, invalidate } = useDashboardCache();
 
+  // On mount, trigger a fetch (the cache decides if data is fresh enough).
+  useEffect(() => {
+    void reload();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Derive local data from cache snapshot (or empty defaults while loading).
+  const dashboard: DashboardData = snapshot?.dashboard ?? EMPTY_DASHBOARD;
+  const todayLog: DailyLog = snapshot?.todayLog ?? EMPTY_LOG;
+  const weightHistory: WeightRecord[] = snapshot?.weightHistory ?? [];
+  const goalData: GoalProgress = snapshot?.goalData ?? { available: false };
+
+  // Local form state (inputs).
   const [proteinInput, setProteinInput] = useState("");
   const [waterInput, setWaterInput] = useState("");
   const [sleepInput, setSleepInput] = useState("");
   const [activityInput, setActivityInput] = useState("");
   const [weightInput, setWeightInput] = useState("");
 
-  const targetWaterMl = DEFAULT_WATER_TARGET_ML;
+  // Sync inputs when fresh log data arrives.
+  useEffect(() => {
+    if (!snapshot) return;
+    const log = snapshot.todayLog;
+    setProteinInput(log.proteinGrams == null ? "" : String(log.proteinGrams));
+    setWaterInput(log.waterMl == null ? "" : String(log.waterMl));
+    setSleepInput(log.sleepHours == null ? "" : String(log.sleepHours));
+    setActivityInput(
+      log.activityMinutes == null ? "" : String(log.activityMinutes)
+    );
+    setWeightInput(log.weightKg == null ? "" : String(log.weightKg));
+  }, [snapshot]);
 
-  const currentWaterMl =
-    todayLog.waterMl ?? (Number(waterInput) || 0);
+  const targetWaterMl = DEFAULT_WATER_TARGET_ML;
+  const currentWaterMl = todayLog.waterMl ?? (Number(waterInput) || 0);
 
   const handleAddWater = (ml: number) => {
     const current = Number(waterInput) || todayLog.waterMl || 0;
@@ -137,35 +112,43 @@ function DashboardPage({
   };
 
   // Track whether each disease card's raw SHAP table is visible.
-  const [showTechnical, setShowTechnical] = useState<Record<string, boolean>>({});
+  const [showTechnical, setShowTechnical] = useState<Record<string, boolean>>(
+    {}
+  );
 
   const [saving, setSaving] = useState(false);
   const [trackingError, setTrackingError] = useState("");
   const [trackingMessage, setTrackingMessage] = useState("");
 
-  useEffect(() => {
-    void fetchDashboardData();
-  }, [fetchDashboardData]);
+  // Saving is per-request, not from cache state.
+  const trackingLoading = loading && !snapshot;
 
-  useEffect(() => {
-    setProteinInput(
-      todayLog.proteinGrams == null ? "" : String(todayLog.proteinGrams)
-    );
-    setWaterInput(
-      todayLog.waterMl == null ? "" : String(todayLog.waterMl)
-    );
-    setSleepInput(
-      todayLog.sleepHours == null ? "" : String(todayLog.sleepHours)
-    );
-    setActivityInput(
-      todayLog.activityMinutes == null
-        ? ""
-        : String(todayLog.activityMinutes)
-    );
-    setWeightInput(
-      todayLog.weightKg == null ? "" : String(todayLog.weightKg)
-    );
-  }, [todayLog]);
+  async function apiRequest<T>(
+    path: string,
+    options: RequestInit = {}
+  ): Promise<T> {
+    const response = await fetch(`${API_BASE}${path}`, {
+      ...options,
+      credentials: "include",
+      headers: {
+        Accept: "application/json",
+        ...(options.body ? { "Content-Type": "application/json" } : {}),
+        ...options.headers,
+      },
+    });
+
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error("Your session may have expired. Please sign in again.");
+      }
+      const message = await response.text();
+      throw new Error(
+        message || `Request failed with status ${response.status}.`
+      );
+    }
+
+    return response.json() as Promise<T>;
+  }
 
   async function saveDailyTracking(
     event: React.FormEvent<HTMLFormElement>
@@ -220,17 +203,17 @@ function DashboardPage({
     }
 
     try {
-      const saved = await apiRequest<DailyLogResponse>(
-        `/api/health-tracking/me?date=${getTodayDateString()}`,
+      await apiRequest<DailyLog>(
+        `/api/health-tracking/me?date=${getToday()}`,
         {
           method: "PUT",
-          body: payload,
+          body: JSON.stringify(payload),
         }
       );
 
-      updateTodayLog(saved);
       setTrackingMessage("Today's health log saved successfully.");
-      invalidateDashboardCache();
+      // Invalidate cache so next render reflects the saved data.
+      invalidate();
     } catch (err) {
       setTrackingError(
         err instanceof Error
@@ -295,8 +278,6 @@ function DashboardPage({
   const targetWeight = numericValue(goalData.targetWeightKg);
   const currentWeightForGoal = numericValue(goalData.currentWeightKg);
 
-  // Classify goal state from raw weights — the backend's progressPercent is
-  // clamped to [0,100] and cannot distinguish "reached" from "exceeded".
   const goalClassification = classifyGoalProgress(
     startingWeight,
     targetWeight,
@@ -322,26 +303,21 @@ function DashboardPage({
     })
     .join(" ");
 
+  // Show skeletons when there is no cached data at all.
+  const showSkeletons = loading && !snapshot;
+
   return (
     <main className="min-h-screen bg-[#F6F2E9] px-4 py-6 text-[#30382F] sm:px-6 sm:py-8">
       <div className="mx-auto max-w-7xl space-y-7">
-        <header className="flex flex-col justify-between gap-3 sm:flex-row sm:items-end">
-          <div>
-            <h1 className="mt-2 font-serif text-3xl text-[#344C3D] sm:text-4xl">
-              Your health overview
-            </h1>
-            <p className="mt-2 text-sm text-[#77796F]">
-              {hasProfile
-                ? `Welcome back, ${dashboard.userName || "there"}.`
-                : "Your personal health dashboard"}
-            </p>
-          </div>
-          {isRevalidating && (
-            <div className="flex items-center gap-1.5 self-start rounded-full border border-[#D7DCCF] bg-white/70 px-3 py-1 text-xs text-[#77796F] sm:self-auto">
-              <RefreshCw size={12} className="animate-spin text-[#71836A]" />
-              <span>Updating in background...</span>
-            </div>
-          )}
+        <header>
+          <h1 className="mt-2 font-serif text-3xl text-[#344C3D] sm:text-4xl">
+            Your health overview
+          </h1>
+          <p className="mt-2 text-sm text-[#77796F]">
+            {hasProfile
+              ? `Welcome back, ${dashboard.userName || "there"}.`
+              : "Your personal health dashboard"}
+          </p>
         </header>
 
         {!loading && !error && !hasCompletedAssessment && (
@@ -378,7 +354,7 @@ function DashboardPage({
             <p>{error}</p>
             <button
               type="button"
-              onClick={() => void fetchDashboardData(true)}
+              onClick={() => void reload()}
               className="inline-flex items-center gap-2 self-start font-medium text-[#344C3D]"
             >
               <RefreshCw size={15} />
@@ -387,17 +363,15 @@ function DashboardPage({
           </div>
         )}
 
+        {/* ── Top metrics ─────────────────────────────────────────────── */}
         <section>
-          {loading ? (
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              <MetricCardSkeleton />
-              <MetricCardSkeleton />
-              <MetricCardSkeleton />
-              <MetricCardSkeleton />
-            </div>
-          ) : (
-            <>
-              <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+            {showSkeletons ? (
+              Array.from({ length: 4 }).map((_, i) => (
+                <SkeletonCard key={i} />
+              ))
+            ) : (
+              <>
                 <MetricCard
                   icon={Scale}
                   title="BMI"
@@ -446,28 +420,23 @@ function DashboardPage({
                   }
                   action={() => onNavigate("progress")}
                 />
-              </div>
-              <p className="mt-3 text-xs leading-5 text-[#77796F]">
-                BMI uses adult reference ranges. Calorie and protein values are
-                estimates, not medical prescriptions.
-              </p>
-            </>
-          )}
+              </>
+            )}
+          </div>
+          <p className="mt-3 text-xs leading-5 text-[#77796F]">
+            BMI uses adult reference ranges. Calorie and protein values are
+            estimates, not medical prescriptions.
+          </p>
         </section>
 
+        {/* ── Daily tracking ───────────────────────────────────────────── */}
         <section>
           <SectionHeading
             title="Daily Health Tracking"
             subtitle="Record today's intake and habits. Your entries are saved to your account."
           />
 
-          {loading ? (
-            <div className="mt-5 grid items-stretch gap-5 lg:grid-cols-[1.15fr_0.85fr]">
-              <SectionCardSkeleton height="h-[520px]" />
-              <SectionCardSkeleton height="h-[520px]" />
-            </div>
-          ) : (
-            <div className="mt-5 grid items-stretch gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+          <div className="mt-5 grid items-stretch gap-5 lg:grid-cols-[1.15fr_0.85fr]">
             <article className="rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-5 shadow-[0_8px_30px_rgba(52,76,61,0.04)] sm:p-7">
               <CardHeading
                 icon={CalendarDays}
@@ -493,74 +462,82 @@ function DashboardPage({
                 </p>
               )}
 
-              <form onSubmit={saveDailyTracking} className="mt-5 space-y-4">
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <TrackingInput
-                    label="Protein consumed"
-                    unit="grams"
-                    value={proteinInput}
-                    onChange={setProteinInput}
-                    min={0}
-                    max={500}
-                    step={0.1}
-                    placeholder="e.g. 45"
-                  />
-                  <TrackingInput
-                    label="Water consumed"
-                    unit="millilitres"
-                    value={waterInput}
-                    onChange={setWaterInput}
-                    min={0}
-                    max={15000}
-                    step={50}
-                    placeholder="e.g. 1800"
-                  />
-                  <TrackingInput
-                    label="Sleep"
-                    unit="hours"
-                    value={sleepInput}
-                    onChange={setSleepInput}
-                    min={0}
-                    max={24}
-                    step={0.5}
-                    placeholder="e.g. 7.5"
-                  />
-                  <TrackingInput
-                    label="Physical activity"
-                    unit="minutes"
-                    value={activityInput}
-                    onChange={setActivityInput}
-                    min={0}
-                    max={1440}
-                    step={5}
-                    placeholder="e.g. 30"
-                  />
-                  <TrackingInput
-                    label="Today's weight"
-                    unit="kg"
-                    value={weightInput}
-                    onChange={setWeightInput}
-                    min={2}
-                    max={500}
-                    step={0.1}
-                    placeholder="e.g. 54.2"
-                  />
+              {showSkeletons ? (
+                <div className="mt-5 space-y-4">
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <div key={i} className="h-14 animate-pulse rounded-xl bg-[#E8E7DE]" />
+                  ))}
                 </div>
+              ) : (
+                <form onSubmit={saveDailyTracking} className="mt-5 space-y-4">
+                  <div className="grid gap-4 sm:grid-cols-2">
+                    <TrackingInput
+                      label="Protein consumed"
+                      unit="grams"
+                      value={proteinInput}
+                      onChange={setProteinInput}
+                      min={0}
+                      max={500}
+                      step={0.1}
+                      placeholder="e.g. 45"
+                    />
+                    <TrackingInput
+                      label="Water consumed"
+                      unit="millilitres"
+                      value={waterInput}
+                      onChange={setWaterInput}
+                      min={0}
+                      max={15000}
+                      step={50}
+                      placeholder="e.g. 1800"
+                    />
+                    <TrackingInput
+                      label="Sleep"
+                      unit="hours"
+                      value={sleepInput}
+                      onChange={setSleepInput}
+                      min={0}
+                      max={24}
+                      step={0.5}
+                      placeholder="e.g. 7.5"
+                    />
+                    <TrackingInput
+                      label="Physical activity"
+                      unit="minutes"
+                      value={activityInput}
+                      onChange={setActivityInput}
+                      min={0}
+                      max={1440}
+                      step={5}
+                      placeholder="e.g. 30"
+                    />
+                    <TrackingInput
+                      label="Today's weight"
+                      unit="kg"
+                      value={weightInput}
+                      onChange={setWeightInput}
+                      min={2}
+                      max={500}
+                      step={0.1}
+                      placeholder="e.g. 54.2"
+                    />
+                  </div>
 
-                <p className="text-xs leading-5 text-[#77796F]">
-                  Leave fields blank if you do not have a value to record.
-                  Previously saved fields remain unchanged when omitted.
-                </p>
+                  <p className="text-xs leading-5 text-[#77796F]">
+                    Leave fields blank if you do not have a value to record.
+                    Previously saved fields remain unchanged when omitted.
+                  </p>
 
-                <button
-                  type="submit"
-                  disabled={saving || loading}
-                  className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#344C3D] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#283D31] disabled:cursor-not-allowed disabled:opacity-60"
-                >
-                  <Save size={16} />
-                  {saving ? "Saving..." : "Save daily log"}
-                </button>
-              </form>
+                  <button
+                    type="submit"
+                    disabled={saving || trackingLoading}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl bg-[#344C3D] px-5 py-3 text-sm font-medium text-white transition hover:bg-[#283D31] disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    <Save size={16} />
+                    {saving ? "Saving..." : "Save daily log"}
+                  </button>
+                </form>
+              )}
             </article>
 
             <div className="space-y-5">
@@ -571,55 +548,62 @@ function DashboardPage({
                   subtitle="Consumed versus general reference"
                 />
 
-                <div className="mt-5">
-                  <div className="flex items-end justify-between gap-3">
-                    <div>
-                      <p className="text-xs text-[#77796F]">Consumed today</p>
-                      <p className="mt-1 font-serif text-3xl text-[#344C3D]">
-                        {proteinConsumed == null
-                          ? "Not logged"
-                          : `${proteinConsumed} g`}
-                      </p>
-                    </div>
-                    <div className="text-right">
-                      <p className="text-xs text-[#77796F]">Reference</p>
-                      <p className="mt-1 text-lg font-medium text-[#344C3D]">
-                        {proteinTarget == null
-                          ? "Unavailable"
-                          : `${proteinTarget} g`}
-                      </p>
-                    </div>
+                {showSkeletons ? (
+                  <div className="mt-5 space-y-3">
+                    <div className="h-10 animate-pulse rounded-xl bg-[#E8E7DE]" />
+                    <div className="h-3 animate-pulse rounded-full bg-[#E8E7DE]" />
                   </div>
-
-                  {proteinProgress != null && (
-                    <>
-                      <div
-                        className="mt-4 h-2.5 overflow-hidden rounded-full bg-[#E8E7DE]"
-                        role="progressbar"
-                        aria-label="Protein reference comparison"
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={Math.round(proteinProgress)}
-                      >
-                        <div
-                          className="h-full rounded-full bg-[#81947B]"
-                          style={{ width: `${proteinProgress}%` }}
-                        />
+                ) : (
+                  <div className="mt-5">
+                    <div className="flex items-end justify-between gap-3">
+                      <div>
+                        <p className="text-xs text-[#77796F]">Consumed today</p>
+                        <p className="mt-1 font-serif text-3xl text-[#344C3D]">
+                          {proteinConsumed == null
+                            ? "Not logged"
+                            : `${proteinConsumed} g`}
+                        </p>
                       </div>
-                      <p className="mt-2 text-xs text-[#77796F]">
-                        {proteinConsumed! >= proteinTarget!
-                          ? "Reference amount reached or exceeded."
-                          : `${Math.round(proteinTarget! - proteinConsumed!)} g below the reference amount.`}
-                      </p>
-                    </>
-                  )}
+                      <div className="text-right">
+                        <p className="text-xs text-[#77796F]">Reference</p>
+                        <p className="mt-1 text-lg font-medium text-[#344C3D]">
+                          {proteinTarget == null
+                            ? "Unavailable"
+                            : `${proteinTarget} g`}
+                        </p>
+                      </div>
+                    </div>
 
-                  <p className="mt-3 text-xs leading-5 text-[#77796F]">
-                    {proteinConsumed == null
-                      ? "Enter your total protein intake in today's log."
-                      : "Based on the amount you entered, not individual foods."}
-                  </p>
-                </div>
+                    {proteinProgress != null && (
+                      <>
+                        <div
+                          className="mt-4 h-2.5 overflow-hidden rounded-full bg-[#E8E7DE]"
+                          role="progressbar"
+                          aria-label="Protein reference comparison"
+                          aria-valuemin={0}
+                          aria-valuemax={100}
+                          aria-valuenow={Math.round(proteinProgress)}
+                        >
+                          <div
+                            className="h-full rounded-full bg-[#81947B]"
+                            style={{ width: `${proteinProgress}%` }}
+                          />
+                        </div>
+                        <p className="mt-2 text-xs text-[#77796F]">
+                          {proteinConsumed! >= proteinTarget!
+                            ? "Reference amount reached or exceeded."
+                            : `${Math.round(proteinTarget! - proteinConsumed!)} g below the reference amount.`}
+                        </p>
+                      </>
+                    )}
+
+                    <p className="mt-3 text-xs leading-5 text-[#77796F]">
+                      {proteinConsumed == null
+                        ? "Enter your total protein intake in today's log."
+                        : "Based on the amount you entered, not individual foods."}
+                    </p>
+                  </div>
+                )}
               </article>
 
               <article className="rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-5 shadow-[0_8px_30px_rgba(52,76,61,0.04)]">
@@ -629,83 +613,92 @@ function DashboardPage({
                   subtitle="Your saved daily habits"
                 />
 
-                <div className="mt-4 space-y-3">
-                  <InfoRow
-                    label="Water"
-                    value={
-                      todayLog.waterMl == null
-                        ? "Not logged"
-                        : `${todayLog.waterMl} ml`
-                    }
-                  />
-                  <InfoRow
-                    label="Sleep"
-                    value={
-                      todayLog.sleepHours == null
-                        ? "Not logged"
-                        : `${todayLog.sleepHours} hours`
-                    }
-                  />
-                  <InfoRow
-                    label="Physical activity"
-                    value={
-                      todayLog.activityMinutes == null
-                        ? "Not logged"
-                        : `${todayLog.activityMinutes} minutes`
-                    }
-                  />
-                  <InfoRow
-                    label="Today's weight"
-                    value={
-                      todayLog.weightKg == null
-                        ? "Not logged"
-                        : `${todayLog.weightKg} kg`
-                    }
-                  />
-                </div>
+                {showSkeletons ? (
+                  <div className="mt-4 space-y-3">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <div key={i} className="h-8 animate-pulse rounded-lg bg-[#E8E7DE]" />
+                    ))}
+                  </div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    <InfoRow
+                      label="Water"
+                      value={
+                        todayLog.waterMl == null
+                          ? "Not logged"
+                          : `${todayLog.waterMl} ml`
+                      }
+                    />
+                    <InfoRow
+                      label="Sleep"
+                      value={
+                        todayLog.sleepHours == null
+                          ? "Not logged"
+                          : `${todayLog.sleepHours} hours`
+                      }
+                    />
+                    <InfoRow
+                      label="Physical activity"
+                      value={
+                        todayLog.activityMinutes == null
+                          ? "Not logged"
+                          : `${todayLog.activityMinutes} minutes`
+                      }
+                    />
+                    <InfoRow
+                      label="Today's weight"
+                      value={
+                        todayLog.weightKg == null
+                          ? "Not logged"
+                          : `${todayLog.weightKg} kg`
+                      }
+                    />
+                  </div>
+                )}
               </article>
             </div>
           </div>
-        )}
-      </section>
-          <div className="mt-5">
-            <HydrationReminderCard
-              currentWaterMl={currentWaterMl}
-              targetWaterMl={targetWaterMl}
-              onAddWater={handleAddWater}
-            />
-          </div>
-        {loading ? (
-          <section className="grid gap-5 lg:grid-cols-2">
-            <SectionCardSkeleton height="h-[420px]" />
-            <SectionCardSkeleton height="h-[420px]" />
-          </section>
-        ) : (
-          <section className="grid gap-5 lg:grid-cols-2">
-            <article className="rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-5 sm:p-6">
-              <div className="flex items-center justify-between gap-3">
-                <CardHeading
-                  icon={TrendingUp}
-                  title="Weight Trend"
-                  subtitle="A quick view of your saved measurements"
-                />
-                <button
-                  type="button"
-                  onClick={() => onNavigate("progress")}
-                  className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-[#344C3D] hover:underline"
-                >
-                  View progress <ArrowRight size={14} />
-                </button>
-              </div>
+        </section>
 
-              {weightHistory.length === 0 ? (
-                <div className="mt-5 rounded-xl bg-[#F1F0E8] p-4">
-                  <p className="text-sm leading-6 text-[#596458]">
-                    No weight records yet. Record your weight in today's log to
-                    start building your trend.
-                  </p>
-                </div>
-              ) : (
+        <div className="mt-5">
+          <HydrationReminderCard
+            currentWaterMl={currentWaterMl}
+            targetWaterMl={targetWaterMl}
+            onAddWater={handleAddWater}
+          />
+        </div>
+
+        {/* ── Weight trend + Goal Progress ───────────────────────────── */}
+        <section className="grid gap-5 lg:grid-cols-2">
+          <article className="rounded-3xl border border-[#344C3D]/10 bg-[#FDFCFA] p-5 sm:p-6">
+            <div className="flex items-center justify-between gap-3">
+              <CardHeading
+                icon={TrendingUp}
+                title="Weight Trend"
+                subtitle="A quick view of your saved measurements"
+              />
+              <button
+                type="button"
+                onClick={() => onNavigate("progress")}
+                className="inline-flex shrink-0 items-center gap-1 text-sm font-medium text-[#344C3D]"
+              >
+                History <ArrowRight size={14} />
+              </button>
+            </div>
+
+            {showSkeletons ? (
+              <div className="mt-5 space-y-3">
+                <div className="h-36 animate-pulse rounded-xl bg-[#E8E7DE]" />
+                <div className="h-4 w-1/2 animate-pulse rounded-full bg-[#E8E7DE]" />
+              </div>
+            ) : weightHistory.length === 0 ? (
+              <div className="mt-5 rounded-xl bg-[#F1F0E8] p-4">
+                <p className="text-sm leading-6 text-[#596458]">
+                  No weight records yet. Record your weight in today's log to
+                  start building your trend.
+                </p>
+              </div>
+            ) : (
               <div className="mt-5 rounded-xl bg-[#F1F0E8] p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
@@ -804,100 +797,106 @@ function DashboardPage({
               subtitle="A quick view of your saved weight target"
             />
 
-            <div className="mt-5 rounded-xl bg-[#F1F0E8] p-4">
-              <p className="text-xs text-[#77796F]">Selected health goal</p>
-              <p className="mt-1 font-medium text-[#344C3D]">
-                {goalData.goal || profile?.goal || "Not provided"}
-              </p>
-
-              <div className="mt-4 grid grid-cols-2 gap-3">
-                <ProfileValue
-                  label="Starting weight"
-                  value={startingWeight == null ? null : String(startingWeight)}
-                  unit="kg"
-                />
-                <ProfileValue
-                  label="Target weight"
-                  value={targetWeight == null ? null : String(targetWeight)}
-                  unit="kg"
-                />
+            {showSkeletons ? (
+              <div className="mt-5 space-y-3">
+                <div className="h-20 animate-pulse rounded-xl bg-[#E8E7DE]" />
+                <div className="h-3 animate-pulse rounded-full bg-[#E8E7DE]" />
               </div>
-
-              {goalClassification.state !== "unavailable" ? (
-                <div className="mt-4">
-                  <div className="flex justify-between gap-3 text-sm">
-                    <span className="text-[#596458]">
-                      {goalClassification.state === "exceeded"
-                        ? "Target exceeded"
-                        : goalClassification.state === "reached"
-                        ? "Target reached"
-                        : goalClassification.state === "moving-away"
-                        ? "Moving away from target"
-                        : "Weight goal progress"}
-                    </span>
-                    <span
-                      className={`font-medium ${
-                        goalClassification.state === "exceeded"
-                          ? "text-amber-600"
-                          : goalClassification.state === "reached"
-                          ? "text-emerald-600"
-                          : goalClassification.state === "moving-away"
-                          ? "text-red-500"
-                          : "text-[#344C3D]"
-                      }`}
-                    >
-                      {goalClassification.state === "exceeded"
-                        ? "Exceeded"
-                        : goalClassification.state === "reached"
-                        ? "100%"
-                        : `${Math.round(goalClassification.clampedPercent)}%`}
-                    </span>
-                  </div>
-                  <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#E8E7DE]">
-                    <div
-                      className={`h-full rounded-full ${
-                        goalClassification.state === "exceeded"
-                          ? "bg-amber-400"
-                          : goalClassification.state === "reached"
-                          ? "bg-emerald-500"
-                          : goalClassification.state === "moving-away"
-                          ? "bg-red-400"
-                          : "bg-[#81947B]"
-                      }`}
-                      style={{ width: `${goalClassification.clampedPercent}%` }}
-                    />
-                  </div>
-                  <p className="mt-2 text-xs leading-5 text-[#77796F]">
-                    {goalClassification.detailText}
-                  </p>
-                </div>
-              ) : (
-                <p className="mt-4 text-sm leading-6 text-[#596458]">
-                  {goalData.message ||
-                    "Save a target weight in your assessment and log your weight to calculate progress."}
+            ) : (
+              <div className="mt-5 rounded-xl bg-[#F1F0E8] p-4">
+                <p className="text-xs text-[#77796F]">Selected health goal</p>
+                <p className="mt-1 font-medium text-[#344C3D]">
+                  {goalData.goal || profile?.goal || "Not provided"}
                 </p>
-              )}
 
+                <div className="mt-4 grid grid-cols-2 gap-3">
+                  <ProfileValue
+                    label="Starting weight"
+                    value={startingWeight == null ? null : String(startingWeight)}
+                    unit="kg"
+                  />
+                  <ProfileValue
+                    label="Target weight"
+                    value={targetWeight == null ? null : String(targetWeight)}
+                    unit="kg"
+                  />
+                </div>
+
+                {goalClassification.state !== "unavailable" ? (
+                  <div className="mt-4">
+                    <div className="flex justify-between gap-3 text-sm">
+                      <span className="text-[#596458]">
+                        {goalClassification.state === "exceeded"
+                          ? "Target exceeded"
+                          : goalClassification.state === "reached"
+                          ? "Target reached"
+                          : goalClassification.state === "moving-away"
+                          ? "Moving away from target"
+                          : "Weight goal progress"}
+                      </span>
+                      <span
+                        className={`font-medium ${
+                          goalClassification.state === "exceeded"
+                            ? "text-amber-600"
+                            : goalClassification.state === "reached"
+                            ? "text-emerald-600"
+                            : goalClassification.state === "moving-away"
+                            ? "text-red-500"
+                            : "text-[#344C3D]"
+                        }`}
+                      >
+                        {goalClassification.state === "exceeded"
+                          ? "Exceeded"
+                          : goalClassification.state === "reached"
+                          ? "100%"
+                          : `${Math.round(goalClassification.clampedPercent)}%`}
+                      </span>
+                    </div>
+                    <div className="mt-2 h-2.5 overflow-hidden rounded-full bg-[#E8E7DE]">
+                      <div
+                        className={`h-full rounded-full ${
+                          goalClassification.state === "exceeded"
+                            ? "bg-amber-400"
+                            : goalClassification.state === "reached"
+                            ? "bg-emerald-500"
+                            : goalClassification.state === "moving-away"
+                            ? "bg-red-400"
+                            : "bg-[#81947B]"
+                        }`}
+                        style={{ width: `${goalClassification.clampedPercent}%` }}
+                      />
+                    </div>
+                    <p className="mt-2 text-xs leading-5 text-[#77796F]">
+                      {goalClassification.detailText}
+                    </p>
+                  </div>
+                ) : (
+                  <p className="mt-4 text-sm leading-6 text-[#596458]">
+                    {goalData.message ||
+                      "Save a target weight in your assessment and log your weight to calculate progress."}
+                  </p>
+                )}
               </div>
-            </article>
-          </section>
-        )}
+            )}
+          </article>
+        </section>
 
+        {/* ── AI health insights ──────────────────────────────────────── */}
         <section>
           <SectionHeading
             title="AI-assisted health insights"
             subtitle="Experimental estimates based on your saved assessment"
           />
 
-          {loading ? (
+          {showSkeletons ? (
             <div className="mt-4 grid gap-4 lg:grid-cols-2">
-              <SectionCardSkeleton height="h-64" />
-              <SectionCardSkeleton height="h-64" />
+              <div className="h-64 animate-pulse rounded-2xl bg-[#E8E7DE]" />
+              <div className="h-64 animate-pulse rounded-2xl bg-[#E8E7DE]" />
             </div>
           ) : error ? (
             <StatusPanel
               message="Health insights could not be loaded because the dashboard request failed."
-              action={() => void fetchDashboardData(true)}
+              action={() => void reload()}
               actionLabel="Retry"
             />
           ) : !hasCompletedAssessment ? (
@@ -963,7 +962,6 @@ function DashboardPage({
                         Contributing factors
                       </h4>
 
-                      {/* Plain-language explanation from Gemini XAI */}
                       {risk.plainExplanation ? (
                         <p className="mt-3 text-sm leading-6 text-[#424A40]">
                           {risk.plainExplanation}
@@ -974,7 +972,6 @@ function DashboardPage({
                         </p>
                       ) : null}
 
-                      {/* Technical details toggle */}
                       {risk.top_factors?.length ? (
                         <div className="mt-4">
                           <button
@@ -1056,7 +1053,7 @@ function DashboardPage({
                 dashboard.mlPrediction?.message ??
                 "No prediction is available. Check whether the ML service is running and the assessment data is valid."
               }
-              action={() => void fetchDashboardData(true)}
+              action={() => void reload()}
               actionLabel="Retry"
             />
           )}
@@ -1083,6 +1080,19 @@ function DashboardPage({
         </footer>
       </div>
     </main>
+  );
+}
+
+function SkeletonCard() {
+  return (
+    <div className="flex min-h-40 min-w-0 flex-col rounded-2xl border border-[#344C3D]/10 bg-[#FDFCFA] p-4 sm:min-h-44 sm:p-5">
+      <div className="flex items-center gap-2">
+        <div className="h-8 w-8 animate-pulse rounded-lg bg-[#E8E7DE]" />
+        <div className="h-4 w-20 animate-pulse rounded-full bg-[#E8E7DE]" />
+      </div>
+      <div className="mt-4 h-8 w-3/4 animate-pulse rounded-full bg-[#E8E7DE]" />
+      <div className="mt-2 h-4 w-full animate-pulse rounded-full bg-[#E8E7DE]" />
+    </div>
   );
 }
 
