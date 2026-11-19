@@ -107,4 +107,42 @@ public class DailyHealthTrackingController {
                 trackingService.getGoalProgress(
                         authentication.getName()));
     }
+
+    @DeleteMapping("/weight/{id}")
+    public ResponseEntity<Map<String, Object>> deleteWeightLog(
+            Authentication authentication,
+            @PathVariable String id) {
+
+        trackingService.deleteWeightLog(authentication.getName(), id);
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Weight entry deleted successfully."));
+    }
+
+    @DeleteMapping("/weight-history/{id}")
+    public ResponseEntity<Map<String, Object>> deleteWeightHistory(
+            Authentication authentication,
+            @PathVariable String id) {
+
+        trackingService.deleteWeightLog(authentication.getName(), id);
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Weight entry deleted successfully."));
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<Map<String, Object>> deleteDailyLog(
+            Authentication authentication,
+            @RequestParam(required = false)
+            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE)
+            LocalDate date) {
+
+        if (date == null) {
+            throw new IllegalArgumentException("Date parameter is required to delete a log.");
+        }
+        trackingService.deleteWeightLog(authentication.getName(), date.toString());
+        return ResponseEntity.ok(Map.of(
+                "success", true,
+                "message", "Weight entry deleted successfully."));
+    }
 }

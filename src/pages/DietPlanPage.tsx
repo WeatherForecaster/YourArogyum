@@ -2,7 +2,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Activity,
-  ArrowLeft,
   Beef,
   CheckCircle2,
   ChevronDown,
@@ -519,7 +518,7 @@ function isSavedRecommendation(value: unknown): value is SavedRecommendation {
   );
 }
 
-export default function DietPlanPage({ onBack }: DietPlanPageProps) {
+export default function DietPlanPage({ onBack: _onBack }: DietPlanPageProps) {
   const wearableDemoEnabled = isWearableDemoEnabled();
   const wearablePromptContext = getWearableDemoPromptContext();
 
@@ -1029,15 +1028,6 @@ ${availableNutritionFoodNames.join(" | ")}
     <main className="h-full min-h-0 overflow-y-auto bg-[#F6F2E9] p-4 text-[#30382F] sm:p-6 lg:p-8">
       <div className="mx-auto max-w-6xl space-y-6">
         <header className="flex items-start gap-3">
-          <button
-            type="button"
-            onClick={onBack}
-            aria-label="Go back"
-            className="mt-1 rounded-xl border border-[#D9DED2] bg-[#FCFAF5] p-2 text-[#344C3D] transition hover:bg-[#DCE3D5]"
-          >
-            <ArrowLeft size={19} />
-          </button>
-
           <div>
             <h1 className="font-serif text-3xl text-[#344C3D] sm:text-4xl">
               Your Personalized Diet Plan

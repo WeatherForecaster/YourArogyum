@@ -23,6 +23,7 @@ import {
   Pencil,
   X,
   Loader2,
+  ChevronDown,
 } from "lucide-react";
 
 import {
@@ -30,6 +31,7 @@ import {
   saveDailyLog,
   getWeightHistory,
   getGoalProgress,
+  deleteWeightRecord,
   type DailyLogResponse,
   type GoalProgressResponse,
   archiveAndClearLegacyStorage,
@@ -42,7 +44,7 @@ import { useDashboardCache } from "../context/DashboardCacheContext";
 import { classifyGoalProgress } from "../utils/goalProgress";
 
 type WeightEntry = {
-  id: string;
+  id: string | number;
   date: string;
   weight: number;
 };
@@ -101,7 +103,9 @@ export default function ProgressPage({
   const [metric, setMetric] = useState<"weight" | "bmi">("weight");
 
   const [showWeightForm, setShowWeightForm] = useState(false);
-  const [editingWeightId, setEditingWeightId] = useState<string | null>(null);
+  const [editingWeightId, setEditingWeightId] = useState<string | number | null>(null);
+  const [isWeightHistoryOpen, setIsWeightHistoryOpen] = useState(false);
+  const [deletingWeightId, setDeletingWeightId] = useState<string | number | null>(null);
   const [weightDate, setWeightDate] = useState(today());
   const [weightValue, setWeightValue] = useState("");
   const [savingWeight, setSavingWeight] = useState(false);
@@ -145,7 +149,7 @@ export default function ProgressPage({
         ? history
           .filter((h) => h && h.date && Number.isFinite(Number(h.weightKg)))
           .map((h) => ({
-            id: h.date,
+            id: h.id != null ? h.id : h.date,
             date: h.date,
             weight: Number(h.weightKg),
           }))
@@ -191,6 +195,23 @@ export default function ProgressPage({
   const sortedWeights = useMemo(
     () => [...weights].sort((a, b) => a.date.localeCompare(b.date)),
     [weights]
+  );
+
+  const weightsWithChange = useMemo(() => {
+    return sortedWeights.map((entry, index) => {
+      const prev = index > 0 ? sortedWeights[index - 1] : null;
+      const change =
+        prev !== null ? Number((entry.weight - prev.weight).toFixed(1)) : null;
+      return {
+        ...entry,
+        change,
+      };
+    });
+  }, [sortedWeights]);
+
+  const newestFirstWeights = useMemo(
+    () => [...weightsWithChange].reverse(),
+    [weightsWithChange]
   );
 
   const first = sortedWeights[0];
@@ -309,11 +330,29 @@ export default function ProgressPage({
     }
   };
 
-  const deleteWeight = () => {
-    setNotice(
-      "Removing past weight logs is not supported by the health tracking service. You can use 'Edit' to correct the weight for that date."
+  const handleDeleteWeight = async (entry: WeightEntry) => {
+    const confirmed = window.confirm(
+      `Are you sure you want to delete the weight record for ${formatDate(entry.date)} (${entry.weight} kg)?`
     );
-    setNoticeType("info");
+    if (!confirmed) return;
+
+    setDeletingWeightId(entry.id);
+    setNotice("");
+    try {
+      await deleteWeightRecord(entry.id);
+      invalidateDashboardCache();
+      setNotice("Weight record deleted successfully.");
+      setNoticeType("success");
+      await loadData();
+    } catch (err) {
+      console.error("[YourArogyum] Failed to delete weight record:", err);
+      setNotice(
+        err instanceof Error ? err.message : "Failed to delete weight record."
+      );
+      setNoticeType("error");
+    } finally {
+      setDeletingWeightId(null);
+    }
   };
 
   const handleSaveTarget = async () => {
@@ -567,7 +606,7 @@ export default function ProgressPage({
           <div className="rounded-3xl border border-[#e6e9df] bg-white p-5 shadow-[0_4px_24px_rgba(54,75,56,0.035)] sm:p-7">
             <div className="flex flex-wrap items-start justify-between gap-4">
               <div>
-                <h2 className="text-lg font-semibold">Health trends</h2>
+                <h2 className="text-lg font-semibold">Weight trends</h2>
                 <p className="mt-1 text-sm text-[#819084]">
                   Your recorded measurements over time
                 </p>
@@ -1002,71 +1041,133 @@ export default function ProgressPage({
             </div>
           </div>
 
-          <div className="rounded-3xl border border-[#e6e9df] bg-white p-5 shadow-[0_4px_24px_rgba(54,75,56,0.035)] sm:p-6">
-            <div>
-              <h2 className="text-lg font-semibold">Weight history</h2>
-              <p className="mt-1 text-sm text-[#819084]">
-                Review or correct a record from your account
-              </p>
-            </div>
+          <div className="rounded-3xl border border-[#e6e9df] bg-white p-5 shadow-[0_4px_24px_rgba(54,75,56,0.035)] sm:p-6 transition-all duration-300">
+            <button
+              type="button"
+              onClick={() => setIsWeightHistoryOpen((prev) => !prev)}
+              aria-expanded={isWeightHistoryOpen}
+              aria-controls="weight-history-accordion"
+              className="flex w-full items-center justify-between gap-4 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#526e58]/30 rounded-2xl"
+            >
+              <div className="min-w-0">
+                <h2 className="text-lg font-semibold text-[#30382F]">
+                  Weight History ({sortedWeights.length} {sortedWeights.length === 1 ? "entry" : "entries"})
+                </h2>
+                <p className="mt-0.5 text-xs text-[#819084]">
+                  Review or correct a record from your account
+                </p>
+              </div>
 
-            <div className="mt-5 overflow-x-auto">
-              {sortedWeights.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-[#dce5d8] p-8 text-center">
-                  <Scale
-                    className="mx-auto mb-3 text-[#829b80]"
-                    size={25}
-                  />
-                  <p className="text-sm font-medium">No weight history yet</p>
-                  <p className="mt-1 text-xs text-[#879286]">
-                    Your authenticated records will appear here once saved.
-                  </p>
+              <div className="flex items-center gap-3 shrink-0">
+                <div className="text-right">
+                  <span className="block text-[11px] font-medium uppercase tracking-wider text-[#819084]">
+                    Latest
+                  </span>
+                  <span className="text-sm font-semibold text-[#34483b]">
+                    {latest ? `${latest.weight} kg` : "—"}
+                  </span>
                 </div>
-              ) : (
-                <table className="w-full min-w-[400px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-[#edf0e9] text-xs text-[#899589]">
-                      <th className="pb-3 font-medium">Date</th>
-                      <th className="pb-3 font-medium">Weight</th>
-                      <th className="pb-3 text-right font-medium">Actions</th>
-                    </tr>
-                  </thead>
+                <div
+                  className={`rounded-xl bg-[#f4f7f2] p-2 text-[#647c69] transition-transform duration-300 ${
+                    isWeightHistoryOpen ? "rotate-180" : ""
+                  }`}
+                >
+                  <ChevronDown size={18} />
+                </div>
+              </div>
+            </button>
 
-                  <tbody>
-                    {[...sortedWeights].reverse().map((entry) => (
-                      <tr
-                        key={entry.id}
-                        className="border-b border-[#f0f2ed] last:border-0"
-                      >
-                        <td className="py-3.5 text-[#67776a]">
-                          {formatDate(entry.date)}
-                        </td>
-                        <td className="py-3.5 font-medium">
-                          {entry.weight} kg
-                        </td>
-                        <td className="py-3.5">
-                          <div className="flex justify-end gap-1">
-                            <button
-                              onClick={() => openEditWeight(entry)}
-                              aria-label="Edit weight record"
-                              className="rounded-lg p-2 text-[#839084] hover:bg-[#f1f5ed] hover:text-[#526e58]"
-                            >
-                              <Pencil size={15} />
-                            </button>
-                            <button
-                              onClick={deleteWeight}
-                              aria-label="Delete weight record"
-                              className="rounded-lg p-2 text-[#a0aaa0] hover:bg-[#f8eeee] hover:text-[#9b5b5b]"
-                            >
-                              <Trash2 size={15} />
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+            <div
+              id="weight-history-accordion"
+              className={`grid transition-all duration-300 ease-in-out ${
+                isWeightHistoryOpen
+                  ? "grid-rows-[1fr] opacity-100 mt-5 pt-4 border-t border-[#edf0e9]"
+                  : "grid-rows-[0fr] opacity-0"
+              }`}
+            >
+              <div className="overflow-hidden">
+                {sortedWeights.length === 0 ? (
+                  <div className="rounded-2xl border border-dashed border-[#dce5d8] p-8 text-center">
+                    <Scale
+                      className="mx-auto mb-3 text-[#829b80]"
+                      size={25}
+                    />
+                    <p className="text-sm font-medium">No weight history yet</p>
+                    <p className="mt-1 text-xs text-[#879286]">
+                      Your authenticated records will appear here once saved.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="max-h-[260px] overflow-y-auto overflow-x-auto pr-1">
+                    <table className="w-full min-w-[380px] text-left text-sm">
+                      <thead className="sticky top-0 bg-white z-10">
+                        <tr className="border-b border-[#edf0e9] text-xs text-[#899589]">
+                          <th className="pb-3 font-medium">Date</th>
+                          <th className="pb-3 font-medium">Weight</th>
+                          <th className="pb-3 font-medium">Change vs previous</th>
+                          <th className="pb-3 text-right font-medium">Actions</th>
+                        </tr>
+                      </thead>
+
+                      <tbody>
+                        {newestFirstWeights.map((entry) => (
+                          <tr
+                            key={entry.id}
+                            className="border-b border-[#f0f2ed] last:border-0 hover:bg-[#fafbf9] transition-colors"
+                          >
+                            <td className="py-3 text-xs sm:text-sm text-[#67776a] whitespace-nowrap">
+                              {formatDate(entry.date)}
+                            </td>
+                            <td className="py-3 text-xs sm:text-sm font-medium whitespace-nowrap text-[#30382F]">
+                              {entry.weight} kg
+                            </td>
+                            <td className="py-3 text-xs sm:text-sm whitespace-nowrap">
+                              {entry.change === null ? (
+                                <span className="text-xs text-[#819084]">—</span>
+                              ) : entry.change < 0 ? (
+                                <span className="inline-flex items-center gap-1 font-medium text-emerald-600">
+                                  <ArrowDownRight size={15} className="shrink-0" />
+                                  {Math.abs(entry.change)} kg
+                                </span>
+                              ) : entry.change > 0 ? (
+                                <span className="inline-flex items-center gap-1 font-medium text-red-500">
+                                  <ArrowUpRight size={15} className="shrink-0" />
+                                  +{entry.change} kg
+                                </span>
+                              ) : (
+                                <span className="text-xs text-[#819084]">0.0 kg</span>
+                              )}
+                            </td>
+                            <td className="py-3 text-right whitespace-nowrap">
+                              <div className="inline-flex items-center gap-1">
+                                <button
+                                  onClick={() => openEditWeight(entry)}
+                                  aria-label={`Edit weight record for ${formatDate(entry.date)}`}
+                                  className="rounded-lg p-2 text-[#839084] hover:bg-[#f1f5ed] hover:text-[#526e58] transition"
+                                >
+                                  <Pencil size={15} />
+                                </button>
+                                <button
+                                  onClick={() => void handleDeleteWeight(entry)}
+                                  disabled={deletingWeightId === entry.id}
+                                  aria-label={`Delete weight record for ${formatDate(entry.date)}`}
+                                  className="rounded-lg p-2 text-[#a0aaa0] hover:bg-[#f8eeee] hover:text-[#9b5b5b] transition disabled:opacity-50"
+                                >
+                                  {deletingWeightId === entry.id ? (
+                                    <Loader2 size={15} className="animate-spin text-[#9b5b5b]" />
+                                  ) : (
+                                    <Trash2 size={15} />
+                                  )}
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </section>

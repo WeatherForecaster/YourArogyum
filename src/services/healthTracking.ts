@@ -19,6 +19,7 @@ export interface DailyLogResponse {
 }
 
 export interface WeightRecord {
+  id?: number | string;
   date: string;
   weightKg: number;
 }
@@ -132,4 +133,18 @@ export function getGoalProgress(): Promise<GoalProgressResponse> {
   return apiRequest<GoalProgressResponse>("/api/health-tracking/goal-progress", {
     method: "GET",
   });
+}
+
+/**
+ * Deletes a weight record by ID or date.
+ */
+export function deleteWeightRecord(
+  id: number | string
+): Promise<{ success: boolean; message?: string }> {
+  return apiRequest<{ success: boolean; message?: string }>(
+    `/api/health-tracking/weight/${encodeURIComponent(String(id))}`,
+    {
+      method: "DELETE",
+    }
+  );
 }

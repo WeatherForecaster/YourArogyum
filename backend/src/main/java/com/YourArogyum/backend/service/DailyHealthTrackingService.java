@@ -131,6 +131,7 @@ public class DailyHealthTrackingService {
         for (DailyHealthLog log : logs) {
             if (log.getWeightKg() != null) {
                 Map<String, Object> item = new LinkedHashMap<>();
+                item.put("id", log.getId());
                 item.put("date", log.getLogDate());
                 item.put("weightKg", log.getWeightKg());
                 history.add(item);
@@ -138,6 +139,64 @@ public class DailyHealthTrackingService {
         }
 
         return history;
+    }
+
+    @Transactional
+    public void deleteWeightLog(String email, String identifier) {
+        if (identifier == null || identifier.isBlank()) {
+            throw new IllegalArgumentException(
+                    "Weight entry identifier must not be empty.");
+        }
+
+        User user = getUser(email);
+        DailyHealthLog log = null;
+
+        // Try finding by numeric Long ID first
+        try {
+            Long id = Long.parseLong(identifier.trim());
+            log = logRepository.findById(id).orElse(null);
+            if (log != null && !log.getUser().getId().equals(user.getId())) {
+                throw new org.springframework.security.access.AccessDeniedException(
+                        "You do not have permission to delete this weight record.");
+            }
+        } catch (NumberFormatException ignored) {
+            // Identifier is not a numeric ID, fallback to date
+        }
+
+        // If not found by numeric ID, try finding by date for this user
+        if (log == null) {
+            try {
+                LocalDate date = LocalDate.parse(identifier.trim());
+                log = logRepository.findByUserAndLogDate(user, date).orElse(null);
+            } catch (Exception ignored) {
+                // Not a valid date format
+            }
+        }
+
+        if (log == null) {
+            throw new IllegalArgumentException(
+                    "Weight entry not found: " + identifier);
+        }
+
+        // Ownership check
+        if (!log.getUser().getId().equals(user.getId())) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "You do not have permission to delete this weight record.");
+        }
+
+        // If other daily metrics exist (e.g. water, protein, sleep, activity), only clear weightKg.
+        // Otherwise delete the log row completely.
+        boolean hasOtherMetrics = log.getProteinGrams() != null
+                || log.getWaterMl() != null
+                || log.getSleepHours() != null
+                || log.getActivityMinutes() != null;
+
+        if (hasOtherMetrics) {
+            log.setWeightKg(null);
+            logRepository.save(log);
+        } else {
+            logRepository.delete(log);
+        }
     }
 
     @Transactional(readOnly = true)

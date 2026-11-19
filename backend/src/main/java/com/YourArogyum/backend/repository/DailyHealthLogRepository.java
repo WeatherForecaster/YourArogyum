@@ -16,6 +16,9 @@ public interface DailyHealthLogRepository
     Optional<DailyHealthLog> findByUserAndLogDate(
             User user, LocalDate logDate);
 
+    Optional<DailyHealthLog> findByIdAndUser(
+            Long id, User user);
+
     List<DailyHealthLog> findByUserAndLogDateBetweenOrderByLogDateAsc(
             User user, LocalDate from, LocalDate to);
 }

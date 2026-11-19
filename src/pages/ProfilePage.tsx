@@ -52,27 +52,27 @@ function ProfilePage({
 
   const profileDetails = assessment
     ? [
-        { label: "Diet preference", value: assessment.diet },
-        { label: "Health goal", value: assessment.goal },
-        {
-          label: "Current weight",
-          value: assessment.weight ? `${assessment.weight} kg` : "",
-        },
-        {
-          label: "Target weight",
-          value: assessment.targetWeight ? `${assessment.targetWeight} kg` : "",
-        },
-        { label: "Food preferences", value: assessment.foodPreferences },
-        { label: "Food allergies", value: assessment.foodAllergies },
-        { label: "Other allergies", value: assessment.allergies },
-        { label: "Foods to avoid", value: assessment.foodsToAvoid },
-        { label: "Health conditions", value: assessment.conditions },
-        { label: "Health concerns", value: assessment.healthConcerns },
-        { label: "Medications", value: assessment.medications },
-        { label: "Activity level", value: assessment.activity },
-        { label: "Fitness level", value: assessment.fitnessLevel },
-        { label: "Sleep duration", value: assessment.sleep },
-      ].filter((item) => Boolean(item.value?.trim()))
+      { label: "Diet preference", value: assessment.diet },
+      { label: "Health goal", value: assessment.goal },
+      {
+        label: "Current weight",
+        value: assessment.weight ? `${assessment.weight} kg` : "",
+      },
+      {
+        label: "Target weight",
+        value: assessment.targetWeight ? `${assessment.targetWeight} kg` : "",
+      },
+      { label: "Food preferences", value: assessment.foodPreferences },
+      { label: "Food allergies", value: assessment.foodAllergies },
+      { label: "Other allergies", value: assessment.allergies },
+      { label: "Foods to avoid", value: assessment.foodsToAvoid },
+      { label: "Health conditions", value: assessment.conditions },
+      { label: "Health concerns", value: assessment.healthConcerns },
+      { label: "Medications", value: assessment.medications },
+      { label: "Activity level", value: assessment.activity },
+      { label: "Fitness level", value: assessment.fitnessLevel },
+      { label: "Sleep duration", value: assessment.sleep },
+    ].filter((item) => Boolean(item.value?.trim()))
     : [];
 
   const hasAllergyWarning =

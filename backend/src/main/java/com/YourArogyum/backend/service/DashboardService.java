@@ -10,7 +10,6 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.LinkedHashMap;
-import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Optional;
@@ -21,38 +20,32 @@ public class DashboardService {
     private final AssessmentRepository assessmentRepository;
     private final UserRepository userRepository;
     private final MlPredictionService mlPredictionService;
-    private final XaiExplanationService xaiExplanationService;
 
     public DashboardService(
             AssessmentRepository assessmentRepository,
             UserRepository userRepository,
-            MlPredictionService mlPredictionService,
-            XaiExplanationService xaiExplanationService) {
+            MlPredictionService mlPredictionService) {
 
         this.assessmentRepository = assessmentRepository;
         this.userRepository = userRepository;
         this.mlPredictionService = mlPredictionService;
-        this.xaiExplanationService = xaiExplanationService;
     }
 
     @Transactional(readOnly = true)
     public Map<String, Object> getDashboard(String email) {
         User user = userRepository.findByEmail(email)
-                .orElseThrow(() ->
-                        new RuntimeException("Authenticated user not found."));
+                .orElseThrow(() -> new RuntimeException("Authenticated user not found."));
 
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("userName", user.getName());
 
-        Optional<Assessment> optionalAssessment =
-                assessmentRepository.findByUser_Id(user.getId());
+        Optional<Assessment> optionalAssessment = assessmentRepository.findByUser_Id(user.getId());
 
         if (optionalAssessment.isEmpty()) {
             result.put("assessmentCompleted", false);
             result.put(
                     "message",
-                    "Complete your health assessment to view your dashboard."
-            );
+                    "Complete your health assessment to view your dashboard.");
             result.put("bmi", null);
             result.put("bmiCategory", null);
             result.put("dailyCalories", null);
@@ -61,8 +54,7 @@ public class DashboardService {
 
             result.put("mlPrediction", Map.of(
                     "available", false,
-                    "message", "Complete your health assessment first."
-            ));
+                    "message", "Complete your health assessment first."));
 
             addUnavailableFeatures(result);
             return result;
@@ -116,28 +108,24 @@ public class DashboardService {
                 heightCm,
                 weightKg,
                 assessment.getSex(),
-                assessment.getActivity()
-        );
+                assessment.getActivity());
 
         result.put("dailyCalories", dailyCalories);
         result.put(
                 "calorieEstimateNote",
                 dailyCalories == null
                         ? "Check your age, height, weight, sex, and activity level."
-                        : "Estimated from your saved health profile and activity level."
-        );
+                        : "Estimated from your saved health profile and activity level.");
 
         Double proteinTarget = calculateProteinBaseline(
-                age, weightKg, assessment.getConditions()
-        );
+                age, weightKg, assessment.getConditions());
 
         result.put("proteinTargetGrams", proteinTarget);
         result.put(
                 "proteinEstimateNote",
                 proteinTarget == null
                         ? "A protein target is not provided because the available information is insufficient or a medical condition may require individualized advice."
-                        : "General adult reference estimate of 0.8 g/kg/day, not a personalized treatment target."
-        );
+                        : "General adult reference estimate of 0.8 g/kg/day, not a personalized treatment target.");
 
         Map<String, Object> healthIndicators = new LinkedHashMap<>();
         healthIndicators.put("bmi", bmi);
@@ -146,60 +134,10 @@ public class DashboardService {
         result.put("healthIndicators", healthIndicators);
 
         // Fetch predictions from the Python ML service.
-        Map<String, Object> mlPrediction = mlPredictionService.predict(assessment);
-
-        // Enrich each disease result with a plain-language XAI explanation.
-        if (Boolean.TRUE.equals(mlPrediction.get("available"))) {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> mlResult =
-                    (Map<String, Object>) mlPrediction.get("result");
-
-            if (mlResult != null) {
-                enrichWithExplanation(mlResult, "diabetes");
-                enrichWithExplanation(mlResult, "heart");
-            }
-        }
-
-        result.put("mlPrediction", mlPrediction);
+        result.put("mlPrediction", mlPredictionService.predict(assessment));
 
         addUnavailableFeatures(result);
         return result;
-    }
-
-    /**
-     * Calls the XAI service for {@code diseaseKey} and injects
-     * {@code plainExplanation} directly into the disease sub-map.
-     * Failures are silent; the field is set to {@code null}.
-     */
-    @SuppressWarnings("unchecked")
-    private void enrichWithExplanation(Map<String, Object> mlResult,
-                                       String diseaseKey) {
-        Object raw = mlResult.get(diseaseKey);
-        if (!(raw instanceof Map)) {
-            return;
-        }
-
-        // mlResult values come from Jackson deserialisation as LinkedHashMap.
-        Map<String, Object> diseaseMap = (Map<String, Object>) raw;
-        // Make a mutable copy so we can add the new field.
-        Map<String, Object> mutable = new LinkedHashMap<>(diseaseMap);
-
-        String riskLevel = String.valueOf(mutable.getOrDefault("risk_level", ""));
-
-        List<Map<String, Object>> topFactors = null;
-        Object rawFactors = mutable.get("top_factors");
-        if (rawFactors instanceof List<?> list) {
-            topFactors = list.stream()
-                    .filter(item -> item instanceof Map)
-                    .map(item -> (Map<String, Object>) item)
-                    .toList();
-        }
-
-        String friendlyDisease = diseaseKey.equals("heart") ? "heart disease" : diseaseKey;
-        String explanation = xaiExplanationService.explain(friendlyDisease, riskLevel, topFactors);
-        mutable.put("plainExplanation", explanation);
-
-        mlResult.put(diseaseKey, mutable);
     }
 
     private Double calculateDailyCalories(
@@ -318,18 +256,15 @@ public class DashboardService {
     private void addUnavailableFeatures(Map<String, Object> result) {
         result.put("goalProgress", Map.of(
                 "available", false,
-                "message", "Goal progress will appear after progress tracking is implemented."
-        ));
+                "message", "Goal progress will appear after progress tracking is implemented."));
 
         result.put("weightTrend", Map.of(
                 "available", false,
-                "message", "Weight history has not been implemented yet."
-        ));
+                "message", "Weight history has not been implemented yet."));
 
         result.put("todaysSnapshot", Map.of(
                 "available", false,
-                "message", "Daily activity and habit logging has not been implemented yet."
-        ));
+                "message", "Daily activity and habit logging has not been implemented yet."));
     }
 
     private Double parsePositiveNumber(String value) {
