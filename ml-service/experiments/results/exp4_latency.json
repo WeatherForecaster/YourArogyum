@@ -1,0 +1,46 @@
+{
+  "environment": {
+    "python": "3.12.10",
+    "platform": "Windows-11-10.0.26300-SP0",
+    "cpus": 8,
+    "note": "sandbox VM; not the deployed Render environment"
+  },
+  "cold_starts": [
+    {
+      "startup_to_ready_ms": 3279.307599994354,
+      "first_predict_ms": 131.83520000893623,
+      "ok": true
+    },
+    {
+      "startup_to_ready_ms": 2643.296400026884,
+      "first_predict_ms": 139.34900000458583,
+      "ok": true
+    },
+    {
+      "startup_to_ready_ms": 3217.5698000355624,
+      "first_predict_ms": 144.1459000343457,
+      "ok": true
+    },
+    {
+      "startup_to_ready_ms": 3229.848300048616,
+      "first_predict_ms": 141.8989000376314,
+      "ok": true
+    },
+    {
+      "startup_to_ready_ms": 2636.660899966955,
+      "first_predict_ms": 142.22219999646768,
+      "ok": true
+    }
+  ],
+  "warm_predict_ms": {
+    "n": 300,
+    "failures": 0,
+    "median": 125.07734997780062,
+    "mean": 129.55713700018046,
+    "p95": 147.451099997852,
+    "p99": 153.40259997174144,
+    "min": 106.34820000268519,
+    "max": 178.80260001402348
+  },
+  "method": "sequential HTTP POST /predict with one fixed profile; time measured client-side with perf_counter; 5 cold starts; 20 discarded warm-ups; 300 timed warm requests"
+}
